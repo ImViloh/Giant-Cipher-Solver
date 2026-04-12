@@ -12,6 +12,11 @@ export declare function xorBuffer(buf: Buffer, key: string | Buffer | Uint8Array
 export declare function xorSingleByte(buf: Buffer, b: number): Buffer;
 export declare function reverseBuffer(buf: Buffer): Buffer;
 export declare function builtinXorKeys(): string[];
+/**
+ * Keywords tied to Treyarch Zombies / Jason Blundell-era cipher hunts (Revelations, The Giant, etc.).
+ * Used for classical polyalphabetic probes and block-cipher passphrases (mcrypt-style tooling).
+ */
+export declare function blundellCipherKeywords(): string[];
 export declare function md5Hex(s: string): string;
 /** Short keys from hashing common phrases (hex bytes used as XOR key). */
 export declare function derivedKeys(): string[];

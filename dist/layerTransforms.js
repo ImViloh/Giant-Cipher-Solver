@@ -98,6 +98,16 @@ export function swapNibbles(buf) {
     }
     return out;
 }
+/** If data was produced as c[i] = p[i] ⊕ c[i−1], recover p by unrolling from the end. */
+export function decodeCumulativeXor(buf) {
+    if (buf.length < 2)
+        return Buffer.from(buf);
+    const out = Buffer.from(buf);
+    for (let i = buf.length - 1; i > 0; i--) {
+        out[i] = out[i] ^ out[i - 1];
+    }
+    return out;
+}
 export function looksLikeHexAscii(buf) {
     const s = buf.toString("ascii").trim();
     return (s.length >= 8 &&

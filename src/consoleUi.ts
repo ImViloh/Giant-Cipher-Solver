@@ -3,6 +3,11 @@ import type { ReadabilityReport } from "./englishReadability.js";
 import type { CandidatePoolStats } from "./stats.js";
 import type { WordHit } from "./wordScan.js";
 import type { Candidate } from "./solver.js";
+import type { PayloadAnalysisReport } from "./payloadAnalysis.js";
+import {
+  HEX_PATTERN_PREVIEW_BYTES,
+  type HexPatternReport,
+} from "./hexPatterns.js";
 
 const W = 84;
 
@@ -99,6 +104,215 @@ export function renderInputStrip(opts: {
     pc.cyan,
   );
   boxBottom(pc.cyan);
+  console.log("");
+}
+
+/**
+ * After the outer Base64 decodes: nested-format hints (another Base64 layer, hex, JWT, …)
+ * plus hex preview and entropy / file-signature guesses. Matches the boxed CLI style.
+ */
+export function renderPayloadAnalysis(report: PayloadAnalysisReport): void {
+  const fp = report.fingerprint;
+  boxTop(pc.blue);
+  boxRow(pc.bold(pc.blue("  OUTER BASE64 — NESTED FORMAT & BYTE FINGERPRINT")), pc.blue);
+  boxMid(pc.blue);
+
+  boxRow(
+    lr(
+      pc.dim("  Decoded size"),
+      pc.white(`${fp.byteLength} bytes`),
+    ),
+    pc.blue,
+  );
+  boxRow(
+    lr(
+      pc.dim("  Shannon entropy"),
+      pc.white(`${fp.shannonEntropyBits.toFixed(2)}`) +
+        pc.dim(" bits/byte  (max 8)"),
+    ),
+    pc.blue,
+  );
+  boxRow(
+    lr(
+      pc.dim("  Printable ASCII"),
+      pc.white(`${(fp.printableAsciiRatio * 100).toFixed(1)}%`),
+    ),
+    pc.blue,
+  );
+
+  const head =
+    fp.hexHead.length > W - 18
+      ? stripAnsi(fp.hexHead).slice(0, W - 22) + "…"
+      : fp.hexHead;
+  boxRow(pc.dim("  Hex (first bytes)  ") + pc.white(head), pc.blue);
+  if (fp.hexTail) {
+    const tail =
+      fp.hexTail.length > W - 18
+        ? stripAnsi(fp.hexTail).slice(0, W - 22) + "…"
+        : fp.hexTail;
+    boxRow(pc.dim("  Hex (last bytes)   ") + pc.white(tail), pc.blue);
+  }
+
+  boxRow(" ", pc.blue);
+  boxRow(pc.bold(pc.white("  File / container signatures")), pc.blue);
+  if (fp.magicLabels.length === 0) {
+    boxRow(pc.dim("  (no known magic bytes at offset 0)"), pc.blue);
+  } else {
+    for (const m of fp.magicLabels) {
+      const line = m.length > W - 8 ? m.slice(0, W - 12) + "…" : m;
+      boxRow(`  ${pc.cyan("•")} ${pc.white(line)}`, pc.blue);
+    }
+  }
+
+  if (fp.inferenceNotes.length > 0) {
+    boxRow(" ", pc.blue);
+    boxRow(pc.bold(pc.white("  Likely interpretation")), pc.blue);
+    for (const n of fp.inferenceNotes) {
+      for (const line of wrapLines(n, W - 6)) {
+        boxRow(`  ${pc.dim(line)}`, pc.blue);
+      }
+    }
+  }
+
+  boxRow(" ", pc.blue);
+  boxRow(pc.bold(pc.white("  Encoding / encryption-shaped matches")), pc.blue);
+  if (report.matches.length === 0) {
+    boxRow(
+      pc.dim(
+        "  No extra armoring detected (no nested Base64 decode, hex, JWT, PEM, …).",
+      ),
+      pc.blue,
+    );
+  } else {
+    for (const m of report.matches) {
+      boxRow(`  ${pc.yellow("▸")} ${pc.bold(pc.cyan(m.kind))}`, pc.blue);
+      const desc =
+        m.description.length > W - 8
+          ? m.description.slice(0, W - 12) + "…"
+          : m.description;
+      boxRow(`     ${pc.dim(desc)}`, pc.blue);
+      const samp =
+        m.detectedSample.length > W - 10
+          ? m.detectedSample.slice(0, W - 14) + "…"
+          : m.detectedSample;
+      boxRow(`     ${pc.dim("string:")} ${pc.white(samp)}`, pc.blue);
+    }
+  }
+
+  boxBottom(pc.blue);
+  console.log("");
+}
+
+/**
+ * Hex dump + pattern recognition (blocks, period, XOR hints) to reason about raw bytes.
+ */
+export function renderHexPatternPanel(hp: HexPatternReport): void {
+  boxTop(pc.green);
+  boxRow(pc.bold(pc.green("  HEX PATTERN SCAN — STRUCTURE & SOLVE HINTS")), pc.green);
+  boxMid(pc.green);
+
+  boxRow(
+    lr(
+      pc.dim("  Distinct byte values"),
+      pc.white(String(hp.uniqueByteValues)) + pc.dim(" / 256"),
+    ),
+    pc.green,
+  );
+  if (hp.topBytes.length > 0) {
+    const parts = hp.topBytes
+      .map(
+        (t) =>
+          pc.white(`0x${t.hex}`) +
+          pc.dim(` ${t.count}×`) +
+          pc.dim(` (${t.pct.toFixed(1)}%)`),
+      )
+      .join(pc.dim(" · "));
+    const line = pc.dim("  Most common bytes  ") + parts;
+    if (stripAnsi(line).length <= W - 4) {
+      boxRow(line, pc.green);
+    } else {
+      boxRow(pc.dim("  Most common bytes"), pc.green);
+      const joined = hp.topBytes
+        .map((t) => `0x${t.hex}×${t.count}`)
+        .join(", ");
+      for (const wl of wrapLines(joined, W - 6)) {
+        boxRow(`  ${pc.dim(wl)}`, pc.green);
+      }
+    }
+  }
+
+  if (hp.xorHints.length > 0) {
+    boxRow(" ", pc.green);
+    boxRow(pc.bold(pc.white("  Single-byte XOR (printable ASCII %)")), pc.green);
+    for (const x of hp.xorHints) {
+      boxRow(
+        lr(
+          pc.dim("    Key"),
+          pc.yellow(`0x${x.keyByte.toString(16).padStart(2, "0")}`) +
+            pc.dim("  →  ") +
+            pc.white(`${(x.printableRatio * 100).toFixed(1)}%`) +
+            pc.dim(" printable"),
+        ),
+        pc.green,
+      );
+    }
+    boxRow(
+      pc.dim(
+        "    (Solver already runs XOR-1byte on decoded bytes — use this to prioritize hypotheses.)",
+      ),
+      pc.green,
+    );
+  }
+
+  if (hp.annotatedLines.length > 0) {
+    boxRow(" ", pc.green);
+    boxRow(pc.bold(pc.white("  Annotated hex (offset · bytes · ASCII)")), pc.green);
+    boxRow(
+      pc.dim(`  Showing first ${HEX_PATTERN_PREVIEW_BYTES} bytes · · = non-printable`),
+      pc.green,
+    );
+    for (const L of hp.annotatedLines) {
+      const hexPart =
+        L.hex.length > W - 28 ? L.hex.slice(0, W - 32) + "…" : L.hex;
+      const one =
+        pc.dim(L.offset) +
+        "  " +
+        pc.white(hexPart) +
+        "  " +
+        pc.cyan(L.ascii);
+      if (stripAnsi(one).length > W - 4) {
+        boxRow(pc.dim(`  ${L.offset}  `) + pc.white(hexPart), pc.green);
+        boxRow(`       ${pc.cyan(L.ascii)}`, pc.green);
+      } else {
+        boxRow(`  ${one}`, pc.green);
+      }
+    }
+  }
+
+  boxRow(" ", pc.green);
+  boxRow(pc.bold(pc.white("  Pattern recognition")), pc.green);
+  if (hp.finds.length === 0) {
+    boxRow(
+      pc.dim(
+        "  No strong structural hits (repeated blocks, period, long runs, …).",
+      ),
+      pc.green,
+    );
+  } else {
+    for (const f of hp.finds) {
+      boxRow(`  ${pc.yellow("▸")} ${pc.bold(pc.cyan(f.title))}`, pc.green);
+      for (const wl of wrapLines(f.detail, W - 8)) {
+        boxRow(`     ${pc.dim(wl)}`, pc.green);
+      }
+      if (f.suggest) {
+        for (const wl of wrapLines(f.suggest, W - 8)) {
+          boxRow(`     ${pc.cyan("→")} ${pc.white(wl)}`, pc.green);
+        }
+      }
+    }
+  }
+
+  boxBottom(pc.green);
   console.log("");
 }
 

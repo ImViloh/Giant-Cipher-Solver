@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { scoreEnglish, bufferToLatin1, bufferToPrintableUtf8, } from "./scoring.js";
 import { allStretchXorKeys, beaufortBase64Decrypt, reverseBuffer, atbashBase64, rotateBase64Alphabet, safeBase64Decode, vigenereBase64Decrypt, xorBuffer, xorSingleByte, } from "./transforms.js";
 import { collectLayeredCandidates } from "./layerSearch.js";
+import { collectExtendedProbeCandidates } from "./extendedProbes.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export function loadCipherJson(path) {
     const raw = readFileSync(path, "utf8");
@@ -114,6 +115,7 @@ export function solveCipherString(cipherB64) {
             tryDecodeBuffer(candidates, "xor-b64-string", `single byte 0x${xb.toString(16)} on ascii`, buf);
         }
     }
+    candidates.push(...collectExtendedProbeCandidates(decoded));
     candidates.push(...collectLayeredCandidates(decoded));
     return candidates;
 }

@@ -1,6 +1,6 @@
 import pc from "picocolors";
 import { analyzeEnglishReadability, englishReadabilityRank, isFullyEnglishReadable, } from "./englishReadability.js";
-import { printVigBruteProgress, printXorBruteProgress, } from "./solveProgress.js";
+import { markVigBrutePhaseStart, printVigBruteProgress, printXorBruteProgress, startBruteLiveUi, stopBruteLiveUi, } from "./solveProgress.js";
 import { bruteXorAlphanumeric, bruteVigenereB64Alphanumeric, } from "./bruteforce.js";
 import { scoreEnglish } from "./scoring.js";
 import { dedupeAndSort, solveCipherString } from "./solver.js";
@@ -17,10 +17,21 @@ function parseMaxMs() {
         return 0;
     return p;
 }
+/** `defaultOptions()` runs more than once per process; warn only on first parse. */
+let warnedBruteKeyLens = false;
 function defaultOptions() {
-    const xorLen = Number.parseInt(process.env.GIANT_BRUTE_XOR_LEN ?? "4", 10) || 4;
-    if (xorLen > 4) {
-        console.warn(pc.yellow("[giant-cipher] GIANT_BRUTE_XOR_LEN>4 searches 62^5+ keys and may run a very long time."));
+    const xorParsed = Number.parseInt(process.env.GIANT_BRUTE_XOR_LEN ?? "4", 10);
+    const xorLen = Number.isFinite(xorParsed) && xorParsed > 0 ? xorParsed : 4;
+    const vigParsed = Number.parseInt(process.env.GIANT_BRUTE_VIG_LEN ?? "3", 10);
+    const vigLen = Number.isFinite(vigParsed) && vigParsed > 0 ? vigParsed : 3;
+    if (!warnedBruteKeyLens) {
+        warnedBruteKeyLens = true;
+        if (xorLen > 3) {
+            console.warn(pc.yellow(`[giant-cipher] GIANT_BRUTE_XOR_LEN=${xorLen}: repeating-XOR keyspace is Σ 62^k for k=1..${xorLen} — expect very long runs when >3.`));
+        }
+        if (vigLen > 3) {
+            console.warn(pc.yellow(`[giant-cipher] GIANT_BRUTE_VIG_LEN=${vigLen}: ~2×Σ 62^k keys for k=1..${vigLen} (Vigenère + Beaufort on Base64) — expect very long runs when >3.`));
+        }
     }
     const peRaw = Number.parseInt(process.env.GIANT_PROGRESS_EVERY ?? "250000", 10);
     const pe = Number.isFinite(peRaw)
@@ -29,8 +40,8 @@ function defaultOptions() {
             : peRaw
         : 250_000;
     return {
-        bruteMaxXorKeyLen: Math.min(6, Math.max(1, xorLen)),
-        bruteMaxVigKeyLen: Math.min(3, Number.parseInt(process.env.GIANT_BRUTE_VIG_LEN ?? "3", 10) || 3),
+        bruteMaxXorKeyLen: xorLen,
+        bruteMaxVigKeyLen: vigLen,
         maxMs: parseMaxMs(),
         progressEvery: pe,
     };
@@ -108,58 +119,78 @@ export async function runAutomaticSolve(cipherB64, options = {}) {
         };
     }
     phases.push(`xor-alphanum-len-1..${o.bruteMaxXorKeyLen}`);
-    const xorOut = await bruteXorAlphanumeric(decoded, o.bruteMaxXorKeyLen, o.maxMs, (phase, tried, keyLen) => {
-        if (o.progressEvery > 0 &&
-            tried > 0 &&
-            tried % o.progressEvery === 0) {
-            printXorBruteProgress(phase, tried, keyLen);
-        }
-    });
-    if (xorOut.hit) {
-        const c = candidateFromHit("xor-brute-alphanum", `key="${xorOut.hit.key}"`, xorOut.hit.text);
-        return {
-            solved: true,
-            solution: c,
-            readability: analyzeEnglishReadability(xorOut.hit.text),
-            nearMiss: c,
-            xorKeysTried: xorOut.tried,
-            vigKeysTried: 0,
-            xorTimedOut: xorOut.timedOut,
-            vigTimedOut: false,
-            phases: [...phases, "xor-brute-hit"],
-        };
+    const xorPhaseStartedAt = Date.now();
+    const useLiveBruteUi = process.stdout.isTTY;
+    if (useLiveBruteUi) {
+        startBruteLiveUi({
+            xorMaxLen: o.bruteMaxXorKeyLen,
+            vigMaxLen: o.bruteMaxVigKeyLen,
+            maxMs: o.maxMs,
+            xorPhaseStartedAt,
+        });
     }
-    phases.push(`vig-b64-alphanum-len-1..${o.bruteMaxVigKeyLen}`);
-    const vigReportEvery = Math.max(5000, Math.floor(o.progressEvery / 4));
-    const vigOut = await bruteVigenereB64Alphanumeric(cipherB64, o.bruteMaxVigKeyLen, o.maxMs, (phase, tried) => {
-        if (o.progressEvery > 0 &&
-            tried > 0 &&
-            tried % vigReportEvery === 0) {
-            printVigBruteProgress(phase, tried);
+    let xorOut;
+    let vigOut;
+    try {
+        xorOut = await bruteXorAlphanumeric(decoded, o.bruteMaxXorKeyLen, o.maxMs, (phase, tried, keyLen) => {
+            if (!useLiveBruteUi &&
+                o.progressEvery > 0 &&
+                tried > 0 &&
+                tried % o.progressEvery === 0) {
+                printXorBruteProgress(phase, tried, keyLen);
+            }
+        });
+        if (xorOut.hit) {
+            const c = candidateFromHit("xor-brute-alphanum", `key="${xorOut.hit.key}"`, xorOut.hit.text);
+            return {
+                solved: true,
+                solution: c,
+                readability: analyzeEnglishReadability(xorOut.hit.text),
+                nearMiss: c,
+                xorKeysTried: xorOut.tried,
+                vigKeysTried: 0,
+                xorTimedOut: xorOut.timedOut,
+                vigTimedOut: false,
+                phases: [...phases, "xor-brute-hit"],
+            };
         }
-    });
-    if (vigOut.hit) {
-        const c = candidateFromHit(vigOut.hit.mode, `alphanum key="${vigOut.hit.key}"`, vigOut.hit.text);
+        phases.push(`vig-b64-alphanum-len-1..${o.bruteMaxVigKeyLen}`);
+        const vigReportEvery = Math.max(5000, Math.floor(o.progressEvery / 4));
+        markVigBrutePhaseStart();
+        vigOut = await bruteVigenereB64Alphanumeric(cipherB64, o.bruteMaxVigKeyLen, o.maxMs, (phase, tried) => {
+            if (!useLiveBruteUi &&
+                o.progressEvery > 0 &&
+                tried > 0 &&
+                tried % vigReportEvery === 0) {
+                printVigBruteProgress(phase, tried);
+            }
+        });
+        if (vigOut.hit) {
+            const c = candidateFromHit(vigOut.hit.mode, `alphanum key="${vigOut.hit.key}"`, vigOut.hit.text);
+            return {
+                solved: true,
+                solution: c,
+                readability: analyzeEnglishReadability(vigOut.hit.text),
+                nearMiss: c,
+                xorKeysTried: xorOut.tried,
+                vigKeysTried: vigOut.tried,
+                xorTimedOut: xorOut.timedOut,
+                vigTimedOut: vigOut.timedOut,
+                phases: [...phases, "vig-brute-hit"],
+            };
+        }
+        const fallbackNear = near ?? findBestNearMiss(dedupeAndSort(solveCipherString(cipherB64)));
         return {
-            solved: true,
-            solution: c,
-            readability: analyzeEnglishReadability(vigOut.hit.text),
-            nearMiss: c,
+            solved: false,
+            nearMiss: fallbackNear,
             xorKeysTried: xorOut.tried,
             vigKeysTried: vigOut.tried,
             xorTimedOut: xorOut.timedOut,
             vigTimedOut: vigOut.timedOut,
-            phases: [...phases, "vig-brute-hit"],
+            phases: [...phases, "exhausted-no-english"],
         };
     }
-    const fallbackNear = near ?? findBestNearMiss(dedupeAndSort(solveCipherString(cipherB64)));
-    return {
-        solved: false,
-        nearMiss: fallbackNear,
-        xorKeysTried: xorOut.tried,
-        vigKeysTried: vigOut.tried,
-        xorTimedOut: xorOut.timedOut,
-        vigTimedOut: vigOut.timedOut,
-        phases: [...phases, "exhausted-no-english"],
-    };
+    finally {
+        stopBruteLiveUi();
+    }
 }

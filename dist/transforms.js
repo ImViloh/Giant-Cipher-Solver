@@ -135,6 +135,64 @@ const DEFAULT_KEYS = [
 export function builtinXorKeys() {
     return [...DEFAULT_KEYS];
 }
+/**
+ * Keywords tied to Treyarch Zombies / Jason Blundell-era cipher hunts (Revelations, The Giant, etc.).
+ * Used for classical polyalphabetic probes and block-cipher passphrases (mcrypt-style tooling).
+ */
+export function blundellCipherKeywords() {
+    return [
+        "ZOMBIES",
+        "Zombies",
+        "zombies",
+        "ZOMBIE",
+        "Zombie",
+        "REVELATIONS",
+        "Revelations",
+        "revelations",
+        "GIANT",
+        "TheGiant",
+        "The Giant",
+        "thegiant",
+        "JasonBlundell",
+        "Blundell",
+        "jasonblundell",
+        "Treyarch",
+        "treyarch",
+        "Primis",
+        "Ultimis",
+        "Richtofen",
+        "Maxis",
+        "Samantha",
+        "Sophia",
+        "Group935",
+        "Group 935",
+        "Element115",
+        "Element 115",
+        "115",
+        "DerRiese",
+        "Der Riese",
+        "DerEisendrache",
+        "Eisendrache",
+        "Origins",
+        "Moon",
+        "Ascension",
+        "Kino",
+        "ShiNoNuma",
+        "MCrypt",
+        "mcrypt",
+        "ShadowsOfEvil",
+        "SOE",
+        "GorodKrovi",
+        "Gorod Krovi",
+        "Apothicon",
+        "Keeper",
+        "Aether",
+        "SummoningKey",
+        "Kronorium",
+        "Verruckt",
+        "NachtDerUntoten",
+    ];
+}
 export function md5Hex(s) {
     return createHash("md5").update(s, "utf8").digest("hex");
 }

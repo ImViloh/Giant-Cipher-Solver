@@ -15,4 +15,6 @@ export declare function collectNestedBase64(first: Buffer, maxDepth: number): La
 export declare function tryHexAsciiDecode(buf: Buffer): Buffer | null;
 export declare function bufHashShort(buf: Buffer): string;
 export declare function swapNibbles(buf: Buffer): Buffer;
+/** If data was produced as c[i] = p[i] ⊕ c[i−1], recover p by unrolling from the end. */
+export declare function decodeCumulativeXor(buf: Buffer): Buffer;
 export declare function looksLikeHexAscii(buf: Buffer): boolean;

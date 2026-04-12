@@ -4,6 +4,7 @@
  * Default: automatic search until strict English is found or brute keyspaces end.
  * Use --dump-all for the legacy full candidate list.
  */
+import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getWorkerThreadCount } from "./bruteforce.js";
 import { getBruteProgressSnapshot, setBruteProgress } from "./bruteState.js";
@@ -15,12 +16,18 @@ import {
   renderHero,
   renderInputStrip,
   renderLogFooter,
+  renderHexPatternPanel,
+  renderPayloadAnalysis,
   renderPhasesPipeline,
   renderReadabilityCard,
   renderStatsDashboard,
   renderWordHits,
   section,
 } from "./consoleUi.js";
+import {
+  analyzeDecodedPayload,
+  formatPayloadAnalysisForLog,
+} from "./payloadAnalysis.js";
 import {
   estimatePlausibilityPercent,
   summarizeCandidatePool,
@@ -32,6 +39,7 @@ import {
   defaultCipherPath,
   type Candidate,
 } from "./solver.js";
+import { safeBase64Decode } from "./transforms.js";
 import {
   printInterruptedProgress,
   printPreSolveBanner,
@@ -84,12 +92,21 @@ Usage: node dist/index.js [options]
 Environment (auto / brute):
   GIANT_MAX_MS          Wall time for brute phases in ms (default 600000 = 10 min).
                         Use 0 for unlimited (until you Ctrl+C — progress is printed on exit).
-  GIANT_BRUTE_XOR_LEN   Max repeating XOR key length over [a-zA-Z0-9] (default 4)
-  GIANT_BRUTE_VIG_LEN   Max Vigenère/Beaufort key length on Base64 (default 3)
+  GIANT_BRUTE_XOR_LEN   Max repeating XOR key length over [a-zA-Z0-9] (default 4; no hard cap — warns if >3)
+  GIANT_BRUTE_VIG_LEN   Max Vigenère/Beaufort key length on Base64 (default 3; no hard cap — warns if >3)
   GIANT_PROGRESS_EVERY  Log XOR progress every N tries (default 250000; 0 = off)
   GIANT_EXTRA_KEYS      Extra comma-separated keys for heuristic phase only
   GIANT_WORD_LOG        Path for dictionary word hit log (default ./giant-word-hits.log)
   GIANT_THREADS         Worker threads for brute-force (default: CPU count; 1 = disable parallelism)
+
+Extended probes (heuristic candidate pool — disable to speed up):
+  GIANT_EXTENDED_PROBES       0 = skip classical + block-cipher + cumulative-XOR probes (default 1)
+  GIANT_CLASSICAL_PROBES      0 = skip Beaufort/Vigenère/rail/atbash/Caesar (default 1)
+  GIANT_BLOCK_CIPHER_PROBES   0 = skip OpenSSL AES/3DES/RC2/BF tries (default 1)
+  GIANT_EXTENDED_KEYWORDS     Max keyword list size for classical + block (default 120)
+  GIANT_CLASSICAL_KEYS        Max keywords for classical ciphers only (default 80)
+  GIANT_BLOCK_CIPHER_KEYS     Max passphrases for block ciphers (default 48)
+  GIANT_BLOCK_CIPHER_MAX      Max successful block decrypts per direction (default 80)
 `);
       process.exit(0);
     }
@@ -189,7 +206,17 @@ async function main(): Promise<void> {
   const raw = input.cipher.trim();
 
   if (dumpAll) {
+    const decDump = safeBase64Decode(raw);
+    const reportDump = decDump ? analyzeDecodedPayload(decDump) : null;
     runLegacyDump(jsonPath, raw, minScore, limit, jsonl);
+    if (reportDump) {
+      renderPayloadAnalysis(reportDump);
+      renderHexPatternPanel(reportDump.hexPatterns);
+    } else {
+      section("Outer Base64");
+      console.log("  (decode failed — skipping payload fingerprint)");
+      console.log("");
+    }
     return;
   }
 
@@ -263,8 +290,19 @@ async function main(): Promise<void> {
     sections,
   );
 
+  const outerDecoded = safeBase64Decode(raw);
+  const payloadReport = outerDecoded ? analyzeDecodedPayload(outerDecoded) : null;
+  if (payloadReport) {
+    appendFileSync(logPath, formatPayloadAnalysisForLog(payloadReport), "utf8");
+  }
+
   renderHero(result.solved);
   renderInputStrip({ inputPath: jsonPath, base64Length: raw.length });
+
+  if (payloadReport) {
+    renderPayloadAnalysis(payloadReport);
+    renderHexPatternPanel(payloadReport.hexPatterns);
+  }
 
   renderStatsDashboard({
     elapsedMs,

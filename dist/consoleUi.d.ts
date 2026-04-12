@@ -2,12 +2,23 @@ import type { ReadabilityReport } from "./englishReadability.js";
 import type { CandidatePoolStats } from "./stats.js";
 import type { WordHit } from "./wordScan.js";
 import type { Candidate } from "./solver.js";
+import type { PayloadAnalysisReport } from "./payloadAnalysis.js";
+import { type HexPatternReport } from "./hexPatterns.js";
 /** Opening hero + subtitle. */
 export declare function renderHero(solved: boolean): void;
 export declare function renderInputStrip(opts: {
     inputPath: string;
     base64Length: number;
 }): void;
+/**
+ * After the outer Base64 decodes: nested-format hints (another Base64 layer, hex, JWT, …)
+ * plus hex preview and entropy / file-signature guesses. Matches the boxed CLI style.
+ */
+export declare function renderPayloadAnalysis(report: PayloadAnalysisReport): void;
+/**
+ * Hex dump + pattern recognition (blocks, period, XOR hints) to reason about raw bytes.
+ */
+export declare function renderHexPatternPanel(hp: HexPatternReport): void;
 /** Legacy --dump-all mode header. */
 export declare function renderDumpIntro(opts: {
     inputPath: string;

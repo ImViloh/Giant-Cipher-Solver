@@ -19,6 +19,7 @@ import {
   xorSingleByte,
 } from "./transforms.js";
 import { collectLayeredCandidates } from "./layerSearch.js";
+import { collectExtendedProbeCandidates } from "./extendedProbes.js";
 
 export interface CipherInput {
   cipher: string;
@@ -177,6 +178,7 @@ export function solveCipherString(cipherB64: string): Candidate[] {
     }
   }
 
+  candidates.push(...collectExtendedProbeCandidates(decoded));
   candidates.push(...collectLayeredCandidates(decoded));
 
   return candidates;

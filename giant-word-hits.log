@@ -1,7 +1,7 @@
 # ========================================================================
 # Giant Cipher — dictionary word positions (token scan, min length ≥3)
-# 2026-04-12T13:03:18.793Z
-# Run duration: 18.97s
+# 2026-04-12T20:55:43.744Z
+# Run duration: 2565.08s
 # Base64 ciphertext length: 192
 # ========================================================================
 
@@ -18,3 +18,24 @@ Length: 144 | Dictionary hits: 0
 ------------------------------------------------------------------------
 (no dictionary words in this string)
 
+
+# ========================================================================
+# Decoded payload — nested format hints & byte fingerprint
+# ========================================================================
+Bytes: 144
+Hex (first 24 bytes): 90 29 a5 80 58 ba 19 42 4d 82 43 48 d5 0e 35 7d b7 f2 2e 80 85 4c 2b c8
+Hex (last 8 bytes):  1d bb e5 b5 f7 fc 5a 35
+Entropy: 6.77 bits/byte  |  Printable ASCII: 42.4%
+Magic / file hints: (none matched)
+Inference:
+  - Elevated entropy — may be compressed data, encoded binary, or encrypted payload; try nested transforms in the solver pipeline.
+  - Length is a multiple of 16 bytes (144 total) — common for AES block alignment (hypothesis only).
+Nested encoding / format matches: (none detected)
+
+# Hex pattern recognition (structure / reverse-engineering hints)
+# Unique byte values: 117
+# Most common bytes: 0x4c×4, 0x0e×3, 0x35×3, 0x85×3, 0x03×2
+# Top single-byte XOR keys (printable ratio): 0x61=44.4% · 0x63=44.4% · 0x64=44.4% · 0x65=44.4%
+# Pattern finds:
+  - Single-byte XOR raises printability: Key 0x61 gives ~44% strict printable ASCII (letters/symbols).
+    → Solver already tries XOR-1byte on decoded bytes — compare candidate scores if this key ranks high.
