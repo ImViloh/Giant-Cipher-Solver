@@ -1,0 +1,216 @@
+================================================================================
+  Giant Cipher Solver — Tutorial
+  Black Ops III · The Giant · automated cryptanalysis (cipherbase.json)
+================================================================================
+
+WHAT THIS PROGRAM DOES
+----------------------
+The tool reads a Base64 ciphertext from a JSON file, decodes it to raw bytes,
+then runs a pipeline of checks:
+
+  1) Heuristics — lore-related keys, single-byte XOR, Base64 alphabet rotations,
+     Vigenère and Beaufort on the Base64 string, layered transforms (nested
+     Base64, zlib, hex, nibble swap, repeating XOR, RC4), and more.
+
+  2) Brute force (optional, time-limited by default) — repeating XOR with keys
+     built from the character set [a-zA-Z0-9] up to a chosen maximum length, and
+     Vigenère plus Beaufort on the Base64 ciphertext with the same alphabet up
+     to a chosen maximum key length.
+
+It scores outputs with English-oriented heuristics (ASCII, letters, dictionary
+hits, chi-squared, quadgrams) and can report a “strict English” readability
+gate when something looks like a real solution.
+
+Important: this program searches and ranks candidates. It does not guarantee
+that any real-world ciphertext (including community-unsolved ones) will decode
+to readable English.
+
+
+PREREQUISITES
+-------------
+  • Node.js version 18 or newer (see package.json "engines").
+  • npm (comes with Node).
+
+From a terminal, check your version:
+
+  node -v
+
+
+FIRST-TIME SETUP
+----------------
+  1) Open a terminal in the project folder (where package.json lives).
+
+  2) Install dependencies:
+
+       npm install
+
+  3) Build TypeScript (also runs automatically before most solve commands):
+
+       npm run build
+
+
+INPUT FILE FORMAT
+-----------------
+The default file is cipherbase.json in the project root. It must contain a
+single JSON object with a string field named "cipher" holding the Base64
+ciphertext (no line breaks inside the string unless you intentionally want
+them; the solver strips whitespace when decoding).
+
+Example shape:
+
+  {
+    "cipher": "YOUR_BASE64_STRING_HERE"
+  }
+
+You can use another path with the command-line flag --file (see below).
+
+
+MAIN COMMANDS (npm scripts)
+----------------------------
+Run these from the project directory.
+
+  npm run build
+      Compiles TypeScript to the dist/ folder.
+
+  npm run solve
+      Builds (if needed via the script) and runs the full automatic pipeline:
+      heuristics, then brute-force phases within default time and key limits.
+
+  npm run start
+      Same as npm run solve.
+
+  npm run solve:quick
+      Shorter brute limits and a 3-minute brute budget — good for testing.
+
+  npm run solve:full
+      Moderate run: XOR key length up to 4, Vigenère/Beaufort up to 3,
+      10-minute brute budget (see package.json for exact env values).
+
+  npm run solve:30m
+  npm run solve:1h
+  npm run solve:6h
+  npm run solve:24h
+      Longer runs with aggressive settings (24 worker threads, XOR length 5,
+      deeper nested Base64 / layer buffers, and the time budget in the name).
+      Edit package.json if your CPU has fewer than 24 threads or you want
+      different limits.
+
+  npm run solve:unlimited
+      No time limit on brute phases (GIANT_MAX_MS=0). Stop manually with
+      Ctrl+C; the program prints the last known brute-force progress when you
+      stop.
+
+  npm run help
+      Builds and shows CLI usage and environment variable names.
+
+  npm run dump
+      Legacy mode: lists scored candidates (--dump-all) without the automatic
+      brute loop. Useful for inspecting the heuristic pool only.
+
+
+COMMAND-LINE OPTIONS
+--------------------
+After building, you can run the compiled entry point directly:
+
+  node dist/index.js [options]
+
+Common options (full list: npm run help):
+
+  -f, --file <path>
+      Path to JSON with { "cipher": "<base64>" }. If omitted, the default is
+      cipherbase.json next to the project layout (resolved from dist/).
+
+  --dump-all
+      Output all scored candidates (no auto brute loop).
+
+  --min-score <n>     With --dump-all: minimum heuristic score.
+  -n, --limit <n>     With --dump-all: max rows.
+  --jsonl             With --dump-all: one JSON object per line.
+
+
+ENVIRONMENT VARIABLES (AUTO / BRUTE)
+------------------------------------
+You can set these in the shell before npm run, or edit the cross-env lines in
+package.json for your own presets.
+
+Core:
+
+  GIANT_MAX_MS
+      Wall time in milliseconds for the XOR and Vigenère/Beaufort brute
+      phases only (not the quick heuristic pass). Default 600000 (10 minutes).
+      Set to 0 for unlimited time (stop with Ctrl+C; progress is printed on
+      exit).
+
+  GIANT_BRUTE_XOR_LEN
+      Maximum repeating XOR key length over [a-zA-Z0-9]. Default 4; values
+      above 4 search very large spaces and may run a very long time.
+
+  GIANT_BRUTE_VIG_LEN
+      Maximum Vigenère/Beaufort key length on the Base64 string (same alphabet).
+      Capped by the program (typically up to 3 in defaults).
+
+  GIANT_THREADS
+      Number of worker threads for large brute ranges. Default is your CPU
+      logical core count. Use 1 to force single-threaded brute force.
+
+  GIANT_PROGRESS_EVERY
+      Print XOR brute progress every N keys tried. Default 250000. Set to 0 to
+      disable progress lines.
+
+  GIANT_EXTRA_KEYS
+      Comma- or semicolon-separated extra strings used as keys in heuristics
+      (XOR repeat, Vigenère/Beaufort, layered RC4, etc.).
+
+  GIANT_WORD_LOG
+      Path for the dictionary word-hit log. Default ./giant-word-hits.log
+
+Layered search (optional tuning):
+
+  GIANT_NESTED_B64
+      Max depth for nested Base64 unwrapping (default 8 in code; presets may
+      override).
+
+  GIANT_LAYER_MAX_BUFS
+      Cap on distinct buffers explored in the layered pass.
+
+  GIANT_LAYER_XORREP / GIANT_LAYER_RC4
+      How many stretched keys to apply for layer XOR / RC4 attempts.
+
+  GIANT_LAYER_XOR256
+      Set to 0 to skip full single-byte XOR on layer buffers (faster).
+
+  GIANT_LAYER_XOR256_MAXBUFS
+      How many layer buffers get the full 256 single-byte XOR sweep.
+
+
+WHAT YOU WILL SEE
+-----------------
+  • A pre-solve banner with keyspace estimates, thread count, and time budget.
+  • During long XOR brute phases, periodic progress lines (unless disabled).
+  • After completion, a colored dashboard: timing, candidate statistics,
+    brute counts, pipeline phases, dictionary scan summary, best near-miss,
+    and readability metrics.
+  • A word-hits log file (default giant-word-hits.log) with session metadata
+    and ciphertext sections for manual review.
+
+
+TIPS
+----
+  • Start with npm run solve:quick or npm run solve:full before multi-hour runs.
+  • For machines with fewer than 24 logical CPUs, lower GIANT_THREADS in
+    package.json presets to avoid oversubscription.
+  • If brute phases finish almost instantly, you may have hit the configured
+    time budget or a small keyspace; check GIANT_MAX_MS and key lengths.
+  • Use GIANT_EXTRA_KEYS for community or map-specific passphrase guesses
+    without editing source code.
+
+
+SUPPORT / CODE
+--------------
+  • TypeScript sources live in src/; compiled JavaScript in dist/.
+  • Entry point after build: dist/index.js
+
+
+================================================================================
+End of tutorial
+================================================================================

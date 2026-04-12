@@ -1,0 +1,20 @@
+# ========================================================================
+# Giant Cipher — dictionary word positions (token scan, min length ≥3)
+# 2026-04-12T13:03:18.793Z
+# Run duration: 18.97s
+# Base64 ciphertext length: 192
+# ========================================================================
+
+### Base64 ciphertext (stored string, character indices)
+Length: 192 | Dictionary hits: 0
+------------------------------------------------------------------------
+(no dictionary words in this string)
+
+
+### Best near-miss (heuristic English rank)
+Method: vigenere-b64
+Detail: key="TG" (latin1)
+Length: 144 | Dictionary hits: 0
+------------------------------------------------------------------------
+(no dictionary words in this string)
+

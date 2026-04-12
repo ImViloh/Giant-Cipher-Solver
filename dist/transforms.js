@@ -1,0 +1,243 @@
+import { createHash } from "node:crypto";
+/** Standard Base64 alphabet order (RFC 4648). */
+export const B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const B64_INDEX = new Map();
+for (let i = 0; i < B64_CHARS.length; i++)
+    B64_INDEX.set(B64_CHARS[i], i);
+function cleanB64(s) {
+    return s.replace(/\s/g, "").replace(/=+$/, "");
+}
+export function safeBase64Decode(s) {
+    const t = cleanB64(s);
+    if (t.length % 4 === 1)
+        return null;
+    try {
+        return Buffer.from(t, "base64");
+    }
+    catch {
+        return null;
+    }
+}
+/** Vigenère decrypt on Base64 alphabet: P = (C - K) mod 64 */
+export function vigenereBase64Decrypt(cipherB64, key) {
+    const c = cleanB64(cipherB64).replace(/[^A-Za-z0-9+/]/g, "");
+    if (!key.length)
+        return c;
+    let out = "";
+    let ki = 0;
+    const keyUpper = key;
+    for (const ch of c) {
+        const ci = B64_INDEX.get(ch);
+        if (ci === undefined)
+            continue;
+        const kch = keyUpper[ki % keyUpper.length];
+        const kiVal = B64_INDEX.get(kch);
+        if (kiVal === undefined) {
+            ki++;
+            continue;
+        }
+        const pi = (ci - kiVal + 64) % 64;
+        out += B64_CHARS[pi];
+        ki++;
+    }
+    return out;
+}
+/** Beaufort variant on Base64: P = (K - C) mod 64 */
+export function beaufortBase64Decrypt(cipherB64, key) {
+    const c = cleanB64(cipherB64).replace(/[^A-Za-z0-9+/]/g, "");
+    if (!key.length)
+        return c;
+    let out = "";
+    let ki = 0;
+    for (const ch of c) {
+        const ci = B64_INDEX.get(ch);
+        if (ci === undefined)
+            continue;
+        const kch = key[ki % key.length];
+        const kiVal = B64_INDEX.get(kch);
+        if (kiVal === undefined) {
+            ki++;
+            continue;
+        }
+        const pi = (kiVal - ci + 64) % 64;
+        out += B64_CHARS[pi];
+        ki++;
+    }
+    return out;
+}
+/** Atbash on Base64 alphabet: index i → 63 − i */
+export function atbashBase64(cipherB64) {
+    const c = cleanB64(cipherB64);
+    let out = "";
+    for (const ch of c) {
+        const ci = B64_INDEX.get(ch);
+        if (ci === undefined) {
+            out += ch;
+            continue;
+        }
+        out += B64_CHARS[63 - ci];
+    }
+    return out;
+}
+export function rotateBase64Alphabet(cipherB64, r) {
+    const c = cleanB64(cipherB64);
+    let out = "";
+    for (const ch of c) {
+        const ci = B64_INDEX.get(ch);
+        if (ci === undefined) {
+            out += ch;
+            continue;
+        }
+        out += B64_CHARS[(ci + r + 64) % 64];
+    }
+    return out;
+}
+export function xorBuffer(buf, key) {
+    const k = typeof key === "string" ? Buffer.from(key, "utf8") : Buffer.from(key);
+    const out = Buffer.alloc(buf.length);
+    for (let i = 0; i < buf.length; i++) {
+        out[i] = buf[i] ^ k[i % k.length];
+    }
+    return out;
+}
+export function xorSingleByte(buf, b) {
+    const out = Buffer.alloc(buf.length);
+    for (let i = 0; i < buf.length; i++)
+        out[i] = buf[i] ^ b;
+    return out;
+}
+export function reverseBuffer(buf) {
+    return Buffer.from(buf).reverse();
+}
+const DEFAULT_KEYS = [
+    "TheGiant",
+    "thegiant",
+    "GIANT",
+    "DerRiese",
+    "Der Riese",
+    "Treyarch",
+    "Richtofen",
+    "Monty",
+    "Shadowman",
+    "Agartha",
+    "Primis",
+    "Ultimis",
+    "935",
+    "Group935",
+    "Maxis",
+    "Samantha",
+    "Edward",
+    "BO3",
+    "BlackOps3",
+    "zombies",
+    "CallOfDuty",
+];
+export function builtinXorKeys() {
+    return [...DEFAULT_KEYS];
+}
+export function md5Hex(s) {
+    return createHash("md5").update(s, "utf8").digest("hex");
+}
+/** Short keys from hashing common phrases (hex bytes used as XOR key). */
+export function derivedKeys() {
+    const seeds = [
+        "TheGiant",
+        "DerRiese",
+        "Group935",
+        "Element115",
+        "Moon",
+    ];
+    return seeds.map((s) => md5Hex(s).slice(0, 16));
+}
+/** SHA256-derived hex keys (16 hex chars = 8 bytes as XOR/RC4 material). */
+export function derivedSha256Keys() {
+    const seeds = [
+        "TheGiant",
+        "DerRiese",
+        "Group935",
+        "Element115",
+        "Moon",
+        "ShadowsOfEvil",
+        "Origins",
+        "MobOfTheDead",
+        "Ascension",
+        "KinoDerToten",
+        "NachtDerUntoten",
+        "Verruckt",
+        "ShiNoNuma",
+        "CallOfTheDead",
+        "Buried",
+        "TranZit",
+        "DieRise",
+        "GreenRun",
+        "Apothicon",
+        "Keeper",
+    ];
+    return seeds.map((s) => createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16));
+}
+const EXTRA_STRETCH_KEYS = [
+    "TG",
+    "GIANT",
+    "giant",
+    "TheGiantZombies",
+    "TheGiantEE",
+    "Robot",
+    "GiantRobot",
+    "Dragon",
+    "Castle",
+    "Laboratory",
+    "Group 935",
+    "Element 115",
+    "Element115",
+    "115",
+    "MPD",
+    "Pyramid",
+    "Moon",
+    "ShangriLa",
+    "Alcatraz",
+    "Richtofen",
+    "Maxis",
+    "Samantha",
+    "Sophia",
+    "Monty",
+    "Shadowman",
+    "Apothicons",
+    "Keepers",
+    "SummoningKey",
+    "Kronorium",
+    "Agartha",
+    "Aether",
+    "Primis",
+    "Ultimis",
+    "BO3",
+    "BlackOps3",
+    "Treyarch",
+    "Zombies",
+    "CallOfDuty",
+    "COD",
+    "DerEisendrache",
+    "ZetsubouNoShima",
+    "Revelations",
+    "Shadows",
+    "SOE",
+];
+/**
+ * Lore + hash-derived keys for repeating XOR, Vigenère, and layered RC4.
+ * Deduplicated; use with `GIANT_EXTRA_KEYS` (env) in the solver.
+ */
+export function allStretchXorKeys() {
+    const seen = new Set();
+    const out = [];
+    for (const k of [
+        ...builtinXorKeys(),
+        ...derivedKeys(),
+        ...derivedSha256Keys(),
+        ...EXTRA_STRETCH_KEYS,
+    ]) {
+        if (!seen.has(k)) {
+            seen.add(k);
+            out.push(k);
+        }
+    }
+    return out;
+}

@@ -1,0 +1,33 @@
+{
+  "name": "giant-cipher-solver",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI to search The Giant (BO3) ciphertext: heuristics + brute-force + English checks",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run solve",
+    "solve": "npm run build && node dist/index.js",
+    "solve:quick": "cross-env GIANT_BRUTE_XOR_LEN=2 GIANT_BRUTE_VIG_LEN=2 GIANT_MAX_MS=180000 npm run solve",
+    "solve:full": "cross-env GIANT_BRUTE_XOR_LEN=4 GIANT_BRUTE_VIG_LEN=3 GIANT_MAX_MS=600000 npm run solve",
+    "solve:30m": "cross-env GIANT_THREADS=24 GIANT_BRUTE_XOR_LEN=5 GIANT_BRUTE_VIG_LEN=3 GIANT_NESTED_B64=12 GIANT_LAYER_MAX_BUFS=400 GIANT_MAX_MS=1800000 npm run solve",
+    "solve:1h": "cross-env GIANT_THREADS=24 GIANT_BRUTE_XOR_LEN=5 GIANT_BRUTE_VIG_LEN=3 GIANT_NESTED_B64=12 GIANT_LAYER_MAX_BUFS=400 GIANT_MAX_MS=3600000 npm run solve",
+    "solve:6h": "cross-env GIANT_THREADS=24 GIANT_BRUTE_XOR_LEN=5 GIANT_BRUTE_VIG_LEN=3 GIANT_NESTED_B64=12 GIANT_LAYER_MAX_BUFS=400 GIANT_MAX_MS=21600000 npm run solve",
+    "solve:24h": "cross-env GIANT_THREADS=24 GIANT_BRUTE_XOR_LEN=5 GIANT_BRUTE_VIG_LEN=3 GIANT_NESTED_B64=12 GIANT_LAYER_MAX_BUFS=400 GIANT_MAX_MS=86400000 npm run solve",
+    "solve:unlimited": "cross-env GIANT_THREADS=24 GIANT_BRUTE_XOR_LEN=5 GIANT_BRUTE_VIG_LEN=3 GIANT_NESTED_B64=12 GIANT_LAYER_MAX_BUFS=400 GIANT_MAX_MS=0 npm run solve",
+    "cli": "node dist/index.js",
+    "dump": "npm run build && node dist/index.js --dump-all",
+    "help": "npm run build && node dist/index.js --help"
+  },
+  "dependencies": {
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
