@@ -16,6 +16,8 @@ import {
   renderHero,
   renderInputStrip,
   renderLogFooter,
+  renderCipherIntelligence,
+  renderCodCipherSuiteCatalog,
   renderHexPatternPanel,
   renderPayloadAnalysis,
   renderPhasesPipeline,
@@ -24,6 +26,10 @@ import {
   renderWordHits,
   section,
 } from "./consoleUi.js";
+import {
+  buildCipherIntelligence,
+  formatCipherIntelligenceForLog,
+} from "./cipherIntelligence.js";
 import {
   analyzeDecodedPayload,
   formatPayloadAnalysisForLog,
@@ -34,9 +40,9 @@ import {
 } from "./stats.js";
 import {
   dedupeAndSort,
+  defaultCipherPath,
   loadCipherJson,
   solveCipherString,
-  defaultCipherPath,
   type Candidate,
 } from "./solver.js";
 import { safeBase64Decode } from "./transforms.js";
@@ -51,13 +57,15 @@ import {
   writeSessionWordLog,
 } from "./wordScan.js";
 
-function parseArgs(argv: string[]): {
+interface ParsedCliArgs {
   jsonPath: string;
   minScore: number;
   limit: number;
   jsonl: boolean;
   dumpAll: boolean;
-} {
+}
+
+function parseArgs(argv: string[]): ParsedCliArgs {
   let jsonPath = resolve(defaultCipherPath());
   let minScore = Number.NEGATIVE_INFINITY;
   let limit = Number.POSITIVE_INFINITY;
@@ -77,7 +85,16 @@ function parseArgs(argv: string[]): {
     } else if (a === "--dump-all" || a === "--legacy") {
       dumpAll = true;
     } else if (a === "--help" || a === "-h") {
-      console.log(`
+      printHelp();
+      process.exit(0);
+    }
+  }
+
+  return { jsonPath, minScore, limit, jsonl, dumpAll };
+}
+
+function printHelp(): void {
+  console.log(`
 Usage: node dist/index.js [options]
 
   Default mode runs heuristics, then full alphanumeric brute-force on XOR and
@@ -99,6 +116,11 @@ Environment (auto / brute):
   GIANT_WORD_LOG        Path for dictionary word hit log (default ./giant-word-hits.log)
   GIANT_THREADS         Worker threads for brute-force (default: CPU count; 1 = disable parallelism)
 
+Display (terminal UI boxes, live brute panel, banners):
+  GIANT_UI_WIDTH        Box width in columns (60–320, default 160). Widen to avoid wrapping.
+  GIANT_HEX_DUMP_BYTES  Bytes in annotated hex panel (default 8192; 0 or full = up to 1 MiB).
+  GIANT_CANDIDATE_TEXT_MAX  Max plaintext chars in winner card (omit or full = no cap; set to cap huge outputs).
+
 Extended probes (heuristic candidate pool — disable to speed up):
   GIANT_EXTENDED_PROBES       0 = skip classical + block-cipher + cumulative-XOR probes (default 1)
   GIANT_CLASSICAL_PROBES      0 = skip Beaufort/Vigenère/rail/atbash/Caesar (default 1)
@@ -107,12 +129,13 @@ Extended probes (heuristic candidate pool — disable to speed up):
   GIANT_CLASSICAL_KEYS        Max keywords for classical ciphers only (default 80)
   GIANT_BLOCK_CIPHER_KEYS     Max passphrases for block ciphers (default 48)
   GIANT_BLOCK_CIPHER_MAX      Max successful block decrypts per direction (default 80)
-`);
-      process.exit(0);
-    }
-  }
 
-  return { jsonPath, minScore, limit, jsonl, dumpAll };
+COD / extended classical (Affine, Playfair, Bifid, columnar, keyed Caesar, ZNS Vigenère):
+  GIANT_COD_CLASSICAL_PROBES  0 = skip COD-era classical block (default 1)
+  GIANT_COD_CLASSICAL_KEYS    Max keywords for Playfair/Bifid/columnar/etc. (default 60)
+  GIANT_COD_AFFINE            0 = skip full Affine (a,b) sweep (default 1)
+  GIANT_COD_KEYED_CAESAR_MAX_SHIFT  Max shift 1..N for keyed Caesar (default 25)
+`);
 }
 
 function formatLine(rank: number, c: Candidate): string {
@@ -137,8 +160,9 @@ function runLegacyDump(
   minScore: number,
   limit: number,
   jsonl: boolean,
-): void {
-  const candidates = dedupeAndSort(solveCipherString(raw));
+  precomputedCandidates?: Candidate[],
+): Candidate[] {
+  const candidates = precomputedCandidates ?? dedupeAndSort(solveCipherString(raw));
   const filtered = candidates.filter((c) => c.score >= minScore);
   const toShow =
     Number.isFinite(limit) && limit < filtered.length
@@ -157,7 +181,7 @@ function runLegacyDump(
         }),
       );
     }
-    return;
+    return candidates;
   }
 
   renderDumpIntro({
@@ -180,27 +204,11 @@ function runLegacyDump(
     section("Best heuristic score");
     console.log(formatLine(1, best));
   }
+  return candidates;
 }
 
-function installInterruptProgressHandlers(): void {
-  let once = false;
-  const stop = (sig: NodeJS.Signals) => {
-    if (once) return;
-    once = true;
-    console.log("");
-    printInterruptedProgress(getBruteProgressSnapshot(), sig);
-    process.exit(sig === "SIGINT" ? 130 : 143);
-  };
-  process.on("SIGINT", () => stop("SIGINT"));
-  process.on("SIGTERM", () => stop("SIGTERM"));
-}
-
-async function main(): Promise<void> {
-  const { jsonPath, minScore, limit, jsonl, dumpAll } = parseArgs(
-    process.argv.slice(2),
-  );
-
-  installInterruptProgressHandlers();
+async function runGiantCipherSession(opts: ParsedCliArgs): Promise<void> {
+  const { jsonPath, minScore, limit, jsonl, dumpAll } = opts;
 
   const input = loadCipherJson(jsonPath);
   const raw = input.cipher.trim();
@@ -208,7 +216,11 @@ async function main(): Promise<void> {
   if (dumpAll) {
     const decDump = safeBase64Decode(raw);
     const reportDump = decDump ? analyzeDecodedPayload(decDump) : null;
-    runLegacyDump(jsonPath, raw, minScore, limit, jsonl);
+    const poolDump = dedupeAndSort(solveCipherString(raw));
+    runLegacyDump(jsonPath, raw, minScore, limit, jsonl, poolDump);
+    if (!jsonl) {
+      renderCodCipherSuiteCatalog();
+    }
     if (reportDump) {
       renderPayloadAnalysis(reportDump);
       renderHexPatternPanel(reportDump.hexPatterns);
@@ -216,6 +228,17 @@ async function main(): Promise<void> {
       section("Outer Base64");
       console.log("  (decode failed — skipping payload fingerprint)");
       console.log("");
+    }
+    if (!jsonl) {
+      renderCipherIntelligence(
+        buildCipherIntelligence({
+          outerBase64: raw,
+          decoded: decDump,
+          payload: reportDump,
+          candidates: poolDump,
+          solved: false,
+        }),
+      );
     }
     return;
   }
@@ -296,13 +319,25 @@ async function main(): Promise<void> {
     appendFileSync(logPath, formatPayloadAnalysisForLog(payloadReport), "utf8");
   }
 
+  const cipherIntel = buildCipherIntelligence({
+    outerBase64: raw,
+    decoded: outerDecoded,
+    payload: payloadReport,
+    candidates: allCandidates,
+    solved: result.solved,
+  });
+  appendFileSync(logPath, formatCipherIntelligenceForLog(cipherIntel), "utf8");
+
   renderHero(result.solved);
   renderInputStrip({ inputPath: jsonPath, base64Length: raw.length });
+  renderCodCipherSuiteCatalog();
 
   if (payloadReport) {
     renderPayloadAnalysis(payloadReport);
     renderHexPatternPanel(payloadReport.hexPatterns);
   }
+
+  renderCipherIntelligence(cipherIntel);
 
   renderStatsDashboard({
     elapsedMs,
@@ -341,6 +376,27 @@ async function main(): Promise<void> {
       nearReadability ?? analyzeEnglishReadability(result.nearMiss.text),
     );
   }
+}
+
+function installInterruptProgressHandlers(): void {
+  let once = false;
+  const stop = (sig: NodeJS.Signals) => {
+    if (once) return;
+    once = true;
+    console.log("");
+    printInterruptedProgress(getBruteProgressSnapshot(), sig);
+    process.exit(sig === "SIGINT" ? 130 : 143);
+  };
+  process.on("SIGINT", () => stop("SIGINT"));
+  process.on("SIGTERM", () => stop("SIGTERM"));
+}
+
+async function main(): Promise<void> {
+  const opts = parseArgs(process.argv.slice(2));
+
+  installInterruptProgressHandlers();
+
+  await runGiantCipherSession(opts);
 }
 
 main().catch((err) => {

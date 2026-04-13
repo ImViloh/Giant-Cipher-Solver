@@ -11,6 +11,16 @@ import {
   builtinXorKeys,
 } from "./transforms.js";
 import {
+  AFFINE_A_VALUES,
+  bifidDecrypt,
+  COD_CUSTOM_ALPHABET_ZNS,
+  columnarTranspositionDecrypt,
+  affineDecryptA26,
+  keyedCaesarDecrypt,
+  playfairDecrypt,
+  vigenereDecryptCustomAlphabet,
+} from "./codClassicalCiphers.js";
+import {
   atbashLettersA26,
   beaufortDecryptA26,
   beaufortDecryptA52,
@@ -168,7 +178,7 @@ export function collectExtendedProbeCandidates(decoded: Buffer): Candidate[] {
     const compact = latin.replace(/\s/g, "");
     if (compact.length >= 8) {
       const maxRails = Math.min(
-        12,
+        15,
         Math.max(2, Math.floor(compact.length / 4)),
       );
       for (let rails = 2; rails <= maxRails; rails++) {
@@ -177,6 +187,75 @@ export function collectExtendedProbeCandidates(decoded: Buffer): Candidate[] {
           "classical-rail-fence",
           `rails=${rails}`,
           railFenceDecode(compact, rails),
+        );
+      }
+    }
+
+    if ((process.env.GIANT_COD_CLASSICAL_PROBES ?? "1") !== "0") {
+      const codKeyCap = Math.min(
+        classicalKeys.length,
+        Math.max(
+          8,
+          Number.parseInt(process.env.GIANT_COD_CLASSICAL_KEYS ?? "60", 10) || 60,
+        ),
+      );
+      const codKeys = classicalKeys.slice(0, codKeyCap);
+      const codKeyedCaesarMaxShift = Math.min(
+        25,
+        Math.max(
+          1,
+          Number.parseInt(
+            process.env.GIANT_COD_KEYED_CAESAR_MAX_SHIFT ?? "25",
+            10,
+          ) || 25,
+        ),
+      );
+
+      if ((process.env.GIANT_COD_AFFINE ?? "1") !== "0") {
+        for (const a of AFFINE_A_VALUES) {
+          for (let b = 0; b < 26; b++) {
+            pushStringCandidates(
+              out,
+              "cod-affine-a26",
+              `a=${a} b=${b}`,
+              affineDecryptA26(latin, a, b),
+            );
+          }
+        }
+      }
+
+      for (const k of codKeys) {
+        pushStringCandidates(
+          out,
+          "cod-playfair",
+          `key="${k}"`,
+          playfairDecrypt(latin, k),
+        );
+        pushStringCandidates(
+          out,
+          "cod-bifid",
+          `key="${k}"`,
+          bifidDecrypt(latin, k),
+        );
+        pushStringCandidates(
+          out,
+          "cod-columnar",
+          `key="${k}"`,
+          columnarTranspositionDecrypt(latin, k),
+        );
+        for (let s = 1; s <= codKeyedCaesarMaxShift; s++) {
+          pushStringCandidates(
+            out,
+            "cod-keyed-caesar",
+            `key="${k}" shift=${s}`,
+            keyedCaesarDecrypt(latin, k, s),
+          );
+        }
+        pushStringCandidates(
+          out,
+          "cod-vigenere-custom-zns",
+          `alphabet=ZNS key="${k}"`,
+          vigenereDecryptCustomAlphabet(latin, k, COD_CUSTOM_ALPHABET_ZNS),
         );
       }
     }

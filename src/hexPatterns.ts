@@ -26,14 +26,29 @@ export interface XorPrintableHint {
 
 export interface HexPatternReport {
   annotatedLines: HexDumpLine[];
+  /** How many leading bytes are covered by `annotatedLines` (after cap). */
+  bytesAnnotated: number;
   finds: HexPatternFind[];
   uniqueByteValues: number;
   topBytes: { hex: string; count: number; pct: number }[];
   xorHints: XorPrintableHint[];
 }
 
-/** Shown in UI / log as annotated hex (first N bytes). */
-export const HEX_PATTERN_PREVIEW_BYTES = 128;
+/** Default cap for annotated hex when `GIANT_HEX_DUMP_BYTES` is unset. */
+export const HEX_PATTERN_PREVIEW_BYTES = 8192;
+
+/** Bytes to include in annotated hex dump (env `GIANT_HEX_DUMP_BYTES`, default 8192; `0` or `full` = up to 1 MiB). */
+export function hexDumpByteLimit(bufLen: number): number {
+  const raw = process.env.GIANT_HEX_DUMP_BYTES ?? String(HEX_PATTERN_PREVIEW_BYTES);
+  if (raw === "0" || raw.toLowerCase() === "full") {
+    return Math.min(bufLen, 1_048_576);
+  }
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0) {
+    return Math.min(bufLen, HEX_PATTERN_PREVIEW_BYTES);
+  }
+  return Math.min(bufLen, Math.max(256, n));
+}
 const BYTES_PER_LINE = 16;
 
 function printableAsciiStrict(b: number): boolean {
@@ -246,6 +261,7 @@ export function analyzeHexPatterns(buf: Buffer): HexPatternReport {
   if (buf.length === 0) {
     return {
       annotatedLines: [],
+      bytesAnnotated: 0,
       finds: [],
       uniqueByteValues: 0,
       topBytes: [],
@@ -298,8 +314,10 @@ export function analyzeHexPatterns(buf: Buffer): HexPatternReport {
     });
   }
 
+  const dumpLimit = hexDumpByteLimit(buf.length);
   return {
-    annotatedLines: buildAnnotatedDump(buf, HEX_PATTERN_PREVIEW_BYTES),
+    annotatedLines: buildAnnotatedDump(buf, dumpLimit),
+    bytesAnnotated: Math.min(buf.length, dumpLimit),
     finds,
     uniqueByteValues: u,
     topBytes: topByteCounts(buf, 5),

@@ -1,7 +1,7 @@
 # ========================================================================
 # Giant Cipher — dictionary word positions (token scan, min length ≥3)
-# 2026-04-12T20:55:43.744Z
-# Run duration: 2565.08s
+# 2026-04-13T16:07:18.424Z
+# Run duration: 298ms
 # Base64 ciphertext length: 192
 # ========================================================================
 
@@ -39,3 +39,79 @@ Nested encoding / format matches: (none detected)
 # Pattern finds:
   - Single-byte XOR raises printability: Key 0x61 gives ~44% strict printable ASCII (letters/symbols).
     → Solver already tries XOR-1byte on decoded bytes — compare candidate scores if this key ranks high.
+
+# ========================================================================
+# Cipher intelligence — predictions, layers, critique
+# ========================================================================
+IOC: 0.0392 (34 letters)  |  expected English ~0.065
+Entropy: 6.77 b/b  |  printable ASCII: 42.4%  |  zlib: no
+Best candidate: cod-bifid  score=74.24
+Top solver methods: cod-keyed-caesar×1000, layer-xor1×512, cod-affine-a26×312, xor-1byte×256, layer-rc4×144, layer-xor-rep×144, beaufort-b64×77, xor-repeat×77, vigenere-b64×77, b64-rotate×64
+
+Cipher-type predictions (sorted):
+  [59%] Encoding / armoring (Base64, hex, PEM, JWT, …)
+    Outer ciphertext is Base64-shaped; inner format may still be text armoring or raw binary.
+    · Outer string length 192 (Base64 transport).
+    · No extra PEM/JWT/hex wrapper flags — inner may be opaque binary.
+    · No successful zlib inflate on raw decoded buffer (may still be compressed with different framing).
+  [53%] Repeating XOR / additive stream on raw bytes
+    Single-byte XOR strongly improves printability — multi-byte XOR keys are already brute-forced in the solver.
+    · Best 1-byte XOR printable ratio 44.4% (key 0x61).
+    · Entropy 6.77 bits/byte.
+  [39%] RC4 or custom keystream (keyed PRNG XOR)
+    High-entropy binary with flat byte use often matches stream ciphers; solver probes RC4 with keyword-derived keys.
+    · Byte entropy 6.77; printable 42.4%.
+    · RC4-related candidates appear in the pool.
+  [33%] Block cipher (AES / 3DES / Blowfish-style) or binary token
+    Random-looking bytes, optional 16-byte alignment, and duplicate block hints point to block modes or unrelated binary.
+    · Length 144 bytes (multiple of 16).
+    · No repeated 16-byte block highlight.
+    · Extended probes include OpenSSL-style decrypt attempts when enabled.
+  [31%] Monoalphabetic substitution / Caesar family
+    IOC is not strongly English-like on raw bytes (may be binary layer first).
+    · IOC ≈ 0.0392 (English ~0.065) on 34 letters.
+    · Printable ASCII ratio 42.4%.
+  [26%] Polyalphabetic (Vigenère / Beaufort / repeating key on alphabet)
+    Low IOC or solver hits on Vigenère/Beaufort paths support polyalphabetic hypotheses.
+    · IOC 0.0392 (suppressed vs English).
+    · No strong periodicity flag in structural scan.
+    · Solver pool includes Vigenère/Beaufort attempts: yes (see best methods).
+  [23%] Compression (DEFLATE / gzip) before or after encryption
+    No inflate on first try; payload might use raw DEFLATE or non-zlib compression.
+    · gunzip/inflate/inflateRaw did not return on buffer as-is.
+  [20%] Alphabet transforms (Base64 rotation, Atbash, reverse)
+    Community puzzles often permute the Base64 alphabet or reverse strings before standard decode — solver enumerates these.
+    · Some rotate/atbash/reverse candidates appear in the top method counts.
+  [6%] Transposition / rail-fence / permutation on letters
+    IOC can stay English-like under transposition while digraph statistics differ — rely on solver rail/reverse and dictionary hits.
+    · Statistical tests here cannot reliably separate transposition from substitution; use quadgram/dictionary scoring already in the tool.
+
+Layer hypotheses:
+  #1 (57%): Base64 (outer) → Opaque binary or text (no extra wrapper flags)
+    Treat as unwrap order: decode transports first, then attack cryptographic layers on the innermost high-signal buffer.
+  #2 (55%): Base64 (outer) → Block or stream cipher on decoded bytes → Optional nested Base64 on decrypted result
+    Use when inner entropy is high and classical transforms stall — keyword-derived AES attempts matter.
+  #3 (47%): Base64 (outer) → XOR / Vigenère-on-B64 classical layer → English or structured inner
+    Fits community workflows: transform outer string, then decode Base64 to bytes. Falsified if strict English only appears on unrelated method.
+
+Critical analysis:
+  • Heuristic scores vs. true plaintext
+    Obs: Best candidate method “cod-bifid” at score 74.24; pool size 3115.
+    → High score indicates English-like statistics, not proof. Low spread between top candidates suggests ambiguity or layered noise.
+    Falsify: If ground-truth plaintext is known, compare method label — mismatch means missing transform or wrong alphabet.
+  • Index of coincidence on raw decoded bytes
+    Obs: IOC=0.0392 from 34 letters (English ~0.065).
+    → Binary or polyalphabetic layers suppress or skew IOC on the raw buffer.
+    Falsify: Successful decode from a method that yields different letter statistics refutes reliance on raw IOC.
+  • Entropy and randomness
+    Obs: Shannon entropy 6.77 bits/byte; printable ratio 42.4%.
+    → Moderate entropy may still hide structured text after one transform.
+    Falsify: A simple XOR/Vigenère path that jumps to strict English contradicts 'pure high-entropy ciphertext' without ruling out layering.
+  • Solver coverage
+    Obs: Top methods: cod-keyed-caesar×1000, layer-xor1×512, cod-affine-a26×312, xor-1byte×256, layer-rc4×144.
+    → If the true method uses non-alphanumeric keys, custom base64 alphabets, or extra nesting depth beyond env limits, rankings may miss it.
+    Falsify: Manual trial of the actual method should dominate the candidate list once parameters match.
+  • Strict English gate
+    Obs: No strict English — remaining output is best-effort near-miss or noise-shaped.
+    → Near-misses can look readable in places; rely on the readability card and word scan for false positives.
+    Falsify: Human inspection of the alleged solution should read as coherent game narrative, not accidental n-grams.

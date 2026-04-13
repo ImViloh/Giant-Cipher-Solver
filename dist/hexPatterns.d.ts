@@ -22,6 +22,8 @@ export interface XorPrintableHint {
 }
 export interface HexPatternReport {
     annotatedLines: HexDumpLine[];
+    /** How many leading bytes are covered by `annotatedLines` (after cap). */
+    bytesAnnotated: number;
     finds: HexPatternFind[];
     uniqueByteValues: number;
     topBytes: {
@@ -31,8 +33,10 @@ export interface HexPatternReport {
     }[];
     xorHints: XorPrintableHint[];
 }
-/** Shown in UI / log as annotated hex (first N bytes). */
-export declare const HEX_PATTERN_PREVIEW_BYTES = 128;
+/** Default cap for annotated hex when `GIANT_HEX_DUMP_BYTES` is unset. */
+export declare const HEX_PATTERN_PREVIEW_BYTES = 8192;
+/** Bytes to include in annotated hex dump (env `GIANT_HEX_DUMP_BYTES`, default 8192; `0` or `full` = up to 1 MiB). */
+export declare function hexDumpByteLimit(bufLen: number): number;
 /**
  * Structural / statistical scan of raw bytes after Base64 decode.
  */

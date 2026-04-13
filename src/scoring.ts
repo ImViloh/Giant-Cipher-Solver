@@ -11,11 +11,23 @@ const ENGLISH_FREQ: Record<string, number> = {
   Y: 0.01974, Z: 0.00074,
 };
 
+/** A–Z expected frequencies in index order (matches χ² loop over ENGLISH_FREQ). */
+const ENGLISH_FREQ_ARRAY = new Float64Array(26);
+for (let i = 0; i < 26; i++) {
+  ENGLISH_FREQ_ARRAY[i] = ENGLISH_FREQ[String.fromCharCode(65 + i)]!;
+}
+
 const COMMON_BIGRAMS = new Set([
   "TH", "HE", "IN", "ER", "AN", "RE", "ND", "AT", "ON", "NT", "HA", "ES",
   "ST", "EN", "ED", "TO", "IT", "OU", "EA", "HI", "IS", "OR", "TI", "AS",
   "AR", "SE", "AL", "TE", "VE", "OF", "ME", "BE", "LE", "DE", "RO", "NE",
 ]);
+
+/** Packed (c1<<8)|c2 for uppercase A–Z bigrams — same membership as COMMON_BIGRAMS. */
+const COMMON_BIGRAM_CODES = new Set<number>();
+for (const p of COMMON_BIGRAMS) {
+  COMMON_BIGRAM_CODES.add((p.charCodeAt(0) << 8) | p.charCodeAt(1));
+}
 
 export interface ScoreResult {
   score: number;
@@ -26,20 +38,19 @@ export interface ScoreResult {
 }
 
 function chiSquaredEnglish(upper: string): number {
-  let letters = 0;
-  const counts = new Map<string, number>();
-  for (const ch of upper) {
-    if (ch >= "A" && ch <= "Z") {
-      counts.set(ch, (counts.get(ch) ?? 0) + 1);
-      letters++;
-    }
+  const counts = new Uint32Array(26);
+  for (let i = 0; i < upper.length; i++) {
+    const c = upper.charCodeAt(i);
+    if (c >= 65 && c <= 90) counts[c - 65]!++;
   }
+  let letters = 0;
+  for (let i = 0; i < 26; i++) letters += counts[i]!;
   if (letters < 4) return 1e6;
 
   let chi = 0;
-  for (const [letter, exp] of Object.entries(ENGLISH_FREQ)) {
-    const observed = counts.get(letter) ?? 0;
-    const expected = exp * letters;
+  for (let i = 0; i < 26; i++) {
+    const observed = counts[i]!;
+    const expected = ENGLISH_FREQ_ARRAY[i]! * letters;
     const d = observed - expected;
     chi += (d * d) / expected;
   }
@@ -48,11 +59,15 @@ function chiSquaredEnglish(upper: string): number {
 
 function bigramScore(upper: string): number {
   let hits = 0;
-  for (let i = 0; i < upper.length - 1; i++) {
-    const pair = upper.slice(i, i + 2);
-    if (COMMON_BIGRAMS.has(pair)) hits++;
+  const lim = upper.length - 1;
+  for (let i = 0; i < lim; i++) {
+    const c1 = upper.charCodeAt(i);
+    const c2 = upper.charCodeAt(i + 1);
+    if (c1 >= 65 && c1 <= 90 && c2 >= 65 && c2 <= 90) {
+      if (COMMON_BIGRAM_CODES.has((c1 << 8) | c2)) hits++;
+    }
   }
-  return hits / Math.max(1, upper.length - 1);
+  return hits / Math.max(1, lim);
 }
 
 /**

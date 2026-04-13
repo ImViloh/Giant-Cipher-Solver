@@ -2,10 +2,15 @@ import type { ReadabilityReport } from "./englishReadability.js";
 import type { CandidatePoolStats } from "./stats.js";
 import type { WordHit } from "./wordScan.js";
 import type { Candidate } from "./solver.js";
+import type { CipherIntelligenceReport } from "./cipherIntelligence.js";
 import type { PayloadAnalysisReport } from "./payloadAnalysis.js";
 import { type HexPatternReport } from "./hexPatterns.js";
 /** Opening hero + subtitle. */
 export declare function renderHero(solved: boolean): void;
+/**
+ * Static catalog of implemented transforms (COD Zombies–aligned + general cryptanalysis).
+ */
+export declare function renderCodCipherSuiteCatalog(): void;
 export declare function renderInputStrip(opts: {
     inputPath: string;
     base64Length: number;
@@ -19,6 +24,11 @@ export declare function renderPayloadAnalysis(report: PayloadAnalysisReport): vo
  * Hex dump + pattern recognition (blocks, period, XOR hints) to reason about raw bytes.
  */
 export declare function renderHexPatternPanel(hp: HexPatternReport): void;
+/**
+ * Per-family cipher likelihoods, multi-layer unwrap hypotheses, and falsifiable critique.
+ * Fits the same boxed terminal UI as other analyst panels.
+ */
+export declare function renderCipherIntelligence(report: CipherIntelligenceReport): void;
 /** Legacy --dump-all mode header. */
 export declare function renderDumpIntro(opts: {
     inputPath: string;

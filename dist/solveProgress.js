@@ -1,6 +1,7 @@
 import * as readline from "node:readline";
 import pc from "picocolors";
 import { getBruteProgressSnapshot, } from "./bruteState.js";
+import { getUiWidth } from "./uiWidth.js";
 function stripAnsi(s) {
     return s.replace(/\u001b\[[\d;]*m/g, "");
 }
@@ -25,7 +26,6 @@ export function totalXorKeyspace(maxLen) {
 export function totalVigKeyspace(maxLen) {
     return vigKeyspace(maxLen);
 }
-const LIVE_W = 84;
 const LIVE_TICK_MS = 350;
 let bruteLiveTimer = null;
 let bruteLiveLineCount = 0;
@@ -127,15 +127,16 @@ function buildBruteLiveLines(now) {
         etaStr +
         pc.dim("  │  phase elapsed ") +
         pc.white(formatDurationSec(phaseElapsedSec));
-    const barInner = 58;
+    const liveW = getUiWidth();
+    const barInner = Math.max(24, Math.min(96, liveW - 26));
     const barRow = pc.dim("  ") + barMeterPct(pct, barInner) + pc.dim("  pipeline");
-    const top = pc.yellow("╔" + "═".repeat(LIVE_W - 2) + "╗");
-    const mid = pc.yellow("╠" + "═".repeat(LIVE_W - 2) + "╣");
-    const bot = pc.yellow("╚" + "═".repeat(LIVE_W - 2) + "╝");
+    const top = pc.yellow("╔" + "═".repeat(liveW - 2) + "╗");
+    const mid = pc.yellow("╠" + "═".repeat(liveW - 2) + "╣");
+    const bot = pc.yellow("╚" + "═".repeat(liveW - 2) + "╝");
     const row = (inner) => pc.yellow("║") +
         " " +
         inner +
-        " ".repeat(Math.max(0, LIVE_W - 4 - stripAnsi(inner).length)) +
+        " ".repeat(Math.max(0, liveW - 4 - stripAnsi(inner).length)) +
         " " +
         pc.yellow("║");
     return [
@@ -215,7 +216,7 @@ export function stopBruteLiveUi() {
 export function printPreSolveBanner(opts) {
     const xorKeys = pow62Sum(opts.xorMaxLen).toLocaleString();
     const vigKeys = vigKeyspace(opts.vigMaxLen).toLocaleString();
-    const W = 84;
+    const W = getUiWidth();
     const top = pc.yellow("╔" + "═".repeat(W - 2) + "╗");
     const mid = pc.yellow("╠" + "═".repeat(W - 2) + "╣");
     const bot = pc.yellow("╚" + "═".repeat(W - 2) + "╝");
@@ -259,10 +260,11 @@ export function printPreSolveBanner(opts) {
 }
 /** Printed after brute phases finish, before the main dashboard. */
 export function printSolveCompleteSeparator() {
+    const w = Math.min(getUiWidth() - 4, 200);
     console.log("");
-    console.log(pc.dim("  " + "─".repeat(80)));
+    console.log(pc.dim("  " + "─".repeat(w)));
     console.log(pc.bold(pc.cyan("  ✓  Cryptanalysis step finished  →  full report below")));
-    console.log(pc.dim("  " + "─".repeat(80)));
+    console.log(pc.dim("  " + "─".repeat(w)));
     console.log("");
 }
 /** Styled progress line (stdout) — matches dashboard vibe. */
@@ -294,7 +296,7 @@ export function printVigBruteProgress(phase, tried) {
 }
 /** On SIGINT/SIGTERM during brute phases — shows last known key-space progress. */
 export function printInterruptedProgress(snap, signal) {
-    const W = 84;
+    const W = getUiWidth();
     const top = pc.red("╔" + "═".repeat(W - 2) + "╗");
     const mid = pc.red("╠" + "═".repeat(W - 2) + "╣");
     const bot = pc.red("╚" + "═".repeat(W - 2) + "╝");

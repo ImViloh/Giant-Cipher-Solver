@@ -2,8 +2,20 @@
  * Heuristic hex / binary structure analysis on decoded ciphertext to surface
  * patterns that suggest next cryptanalysis steps (XOR, ECB, periodicity, etc.).
  */
-/** Shown in UI / log as annotated hex (first N bytes). */
-export const HEX_PATTERN_PREVIEW_BYTES = 128;
+/** Default cap for annotated hex when `GIANT_HEX_DUMP_BYTES` is unset. */
+export const HEX_PATTERN_PREVIEW_BYTES = 8192;
+/** Bytes to include in annotated hex dump (env `GIANT_HEX_DUMP_BYTES`, default 8192; `0` or `full` = up to 1 MiB). */
+export function hexDumpByteLimit(bufLen) {
+    const raw = process.env.GIANT_HEX_DUMP_BYTES ?? String(HEX_PATTERN_PREVIEW_BYTES);
+    if (raw === "0" || raw.toLowerCase() === "full") {
+        return Math.min(bufLen, 1_048_576);
+    }
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0) {
+        return Math.min(bufLen, HEX_PATTERN_PREVIEW_BYTES);
+    }
+    return Math.min(bufLen, Math.max(256, n));
+}
 const BYTES_PER_LINE = 16;
 function printableAsciiStrict(b) {
     return b >= 0x20 && b <= 0x7e;
@@ -213,6 +225,7 @@ export function analyzeHexPatterns(buf) {
     if (buf.length === 0) {
         return {
             annotatedLines: [],
+            bytesAnnotated: 0,
             finds: [],
             uniqueByteValues: 0,
             topBytes: [],
@@ -261,8 +274,10 @@ export function analyzeHexPatterns(buf) {
             suggest: "Solver already tries XOR-1byte on decoded bytes — compare candidate scores if this key ranks high.",
         });
     }
+    const dumpLimit = hexDumpByteLimit(buf.length);
     return {
-        annotatedLines: buildAnnotatedDump(buf, HEX_PATTERN_PREVIEW_BYTES),
+        annotatedLines: buildAnnotatedDump(buf, dumpLimit),
+        bytesAnnotated: Math.min(buf.length, dumpLimit),
         finds,
         uniqueByteValues: u,
         topBytes: topByteCounts(buf, 5),

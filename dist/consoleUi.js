@@ -1,33 +1,49 @@
 import pc from "picocolors";
-import { HEX_PATTERN_PREVIEW_BYTES, } from "./hexPatterns.js";
-const W = 84;
+import { COD_CIPHER_SUITE_SECTIONS } from "./codCipherSuite.js";
+import { getUiWidth } from "./uiWidth.js";
+function boxOuterW() {
+    return getUiWidth();
+}
+function innerW() {
+    return Math.max(12, boxOuterW() - 4);
+}
 function stripAnsi(s) {
     return s.replace(/\u001b\[[\d;]*m/g, "");
 }
 function dimLine(ch = "─") {
-    return pc.dim(ch.repeat(W));
+    return pc.dim(ch.repeat(boxOuterW()));
 }
 function boxTop(accent = pc.cyan) {
+    const W = boxOuterW();
     console.log(accent("╔" + "═".repeat(W - 2) + "╗"));
 }
 function boxMid(accent = pc.cyan) {
+    const W = boxOuterW();
     console.log(accent("╠" + "═".repeat(W - 2) + "╣"));
 }
 function boxBottom(accent = pc.cyan) {
+    const W = boxOuterW();
     console.log(accent("╚" + "═".repeat(W - 2) + "╝"));
 }
-/** Single line inside box; pads using visible (ANSI-stripped) width. */
-function boxRow(text, accent = pc.cyan, innerWidth = W - 4) {
-    const vis = stripAnsi(text);
-    let t = text;
-    if (vis.length > innerWidth) {
-        t = stripAnsi(text).slice(0, innerWidth - 1) + "…";
+/**
+ * Boxed row: pads short lines; long lines hard-wrap to multiple rows (plain text
+ * after wrap — avoids ellipsis; ANSI may flatten on wrapped segments).
+ */
+function boxRow(text, accent = pc.cyan, innerWidth = innerW()) {
+    const plain = stripAnsi(text);
+    if (plain.length <= innerWidth) {
+        const pad = Math.max(0, innerWidth - plain.length);
+        console.log(accent("║") + " " + text + " ".repeat(pad) + " " + accent("║"));
+        return;
     }
-    const pad = Math.max(0, innerWidth - stripAnsi(t).length);
-    console.log(accent("║") + " " + t + " ".repeat(pad) + " " + accent("║"));
+    for (let i = 0; i < plain.length; i += innerWidth) {
+        const chunk = plain.slice(i, i + innerWidth);
+        const pad = Math.max(0, innerWidth - chunk.length);
+        console.log(accent("║") + " " + chunk + " ".repeat(pad) + " " + accent("║"));
+    }
 }
 /** Left/right columns aligned using visible width (ANSI-safe). */
-function lr(left, right, inner = W - 4) {
+function lr(left, right, inner = innerW()) {
     const gap = Math.max(1, inner - stripAnsi(left).length - stripAnsi(right).length);
     return left + " ".repeat(gap) + right;
 }
@@ -52,12 +68,29 @@ export function renderHero(solved) {
     boxBottom(pc.magenta);
     console.log("");
 }
-export function renderInputStrip(opts) {
-    let pathCol = pc.white(opts.inputPath);
-    if (stripAnsi(opts.inputPath).length > 56) {
-        const v = stripAnsi(opts.inputPath);
-        pathCol = pc.dim("…") + pc.white(v.slice(-54));
+/**
+ * Static catalog of implemented transforms (COD Zombies–aligned + general cryptanalysis).
+ */
+export function renderCodCipherSuiteCatalog() {
+    boxTop(pc.yellow);
+    boxRow(pc.bold(pc.yellow("  CALL OF DUTY ZOMBIES — CIPHER SUITE (IMPLEMENTED)")), pc.yellow);
+    boxMid(pc.yellow);
+    boxRow(pc.dim("  Methods below are what this CLI actually runs (plus brute XOR/Vigenère phases)."), pc.yellow);
+    boxRow(" ", pc.yellow);
+    for (const sec of COD_CIPHER_SUITE_SECTIONS) {
+        boxRow(pc.bold(pc.white(`  ${sec.title}`)), pc.yellow);
+        for (const line of sec.lines) {
+            for (const wl of wrapLines(`  • ${line}`, innerW() - 2)) {
+                boxRow(pc.dim(wl), pc.yellow);
+            }
+        }
+        boxRow(" ", pc.yellow);
     }
+    boxBottom(pc.yellow);
+    console.log("");
+}
+export function renderInputStrip(opts) {
+    const pathCol = pc.white(opts.inputPath);
     boxTop(pc.cyan);
     boxRow(pc.bold(pc.cyan("  INPUT")), pc.cyan);
     boxRow(lr(pc.dim("  File"), pathCol), pc.cyan);
@@ -78,15 +111,9 @@ export function renderPayloadAnalysis(report) {
     boxRow(lr(pc.dim("  Shannon entropy"), pc.white(`${fp.shannonEntropyBits.toFixed(2)}`) +
         pc.dim(" bits/byte  (max 8)")), pc.blue);
     boxRow(lr(pc.dim("  Printable ASCII"), pc.white(`${(fp.printableAsciiRatio * 100).toFixed(1)}%`)), pc.blue);
-    const head = fp.hexHead.length > W - 18
-        ? stripAnsi(fp.hexHead).slice(0, W - 22) + "…"
-        : fp.hexHead;
-    boxRow(pc.dim("  Hex (first bytes)  ") + pc.white(head), pc.blue);
+    boxRow(pc.dim("  Hex (first bytes)  ") + pc.white(fp.hexHead), pc.blue);
     if (fp.hexTail) {
-        const tail = fp.hexTail.length > W - 18
-            ? stripAnsi(fp.hexTail).slice(0, W - 22) + "…"
-            : fp.hexTail;
-        boxRow(pc.dim("  Hex (last bytes)   ") + pc.white(tail), pc.blue);
+        boxRow(pc.dim("  Hex (last bytes)   ") + pc.white(fp.hexTail), pc.blue);
     }
     boxRow(" ", pc.blue);
     boxRow(pc.bold(pc.white("  File / container signatures")), pc.blue);
@@ -95,15 +122,14 @@ export function renderPayloadAnalysis(report) {
     }
     else {
         for (const m of fp.magicLabels) {
-            const line = m.length > W - 8 ? m.slice(0, W - 12) + "…" : m;
-            boxRow(`  ${pc.cyan("•")} ${pc.white(line)}`, pc.blue);
+            boxRow(`  ${pc.cyan("•")} ${pc.white(m)}`, pc.blue);
         }
     }
     if (fp.inferenceNotes.length > 0) {
         boxRow(" ", pc.blue);
         boxRow(pc.bold(pc.white("  Likely interpretation")), pc.blue);
         for (const n of fp.inferenceNotes) {
-            for (const line of wrapLines(n, W - 6)) {
+            for (const line of wrapLines(n, innerW() - 2)) {
                 boxRow(`  ${pc.dim(line)}`, pc.blue);
             }
         }
@@ -116,14 +142,8 @@ export function renderPayloadAnalysis(report) {
     else {
         for (const m of report.matches) {
             boxRow(`  ${pc.yellow("▸")} ${pc.bold(pc.cyan(m.kind))}`, pc.blue);
-            const desc = m.description.length > W - 8
-                ? m.description.slice(0, W - 12) + "…"
-                : m.description;
-            boxRow(`     ${pc.dim(desc)}`, pc.blue);
-            const samp = m.detectedSample.length > W - 10
-                ? m.detectedSample.slice(0, W - 14) + "…"
-                : m.detectedSample;
-            boxRow(`     ${pc.dim("string:")} ${pc.white(samp)}`, pc.blue);
+            boxRow(`     ${pc.dim(m.description)}`, pc.blue);
+            boxRow(`     ${pc.dim("string:")} ${pc.white(m.detectedSample)}`, pc.blue);
         }
     }
     boxBottom(pc.blue);
@@ -143,19 +163,7 @@ export function renderHexPatternPanel(hp) {
             pc.dim(` ${t.count}×`) +
             pc.dim(` (${t.pct.toFixed(1)}%)`))
             .join(pc.dim(" · "));
-        const line = pc.dim("  Most common bytes  ") + parts;
-        if (stripAnsi(line).length <= W - 4) {
-            boxRow(line, pc.green);
-        }
-        else {
-            boxRow(pc.dim("  Most common bytes"), pc.green);
-            const joined = hp.topBytes
-                .map((t) => `0x${t.hex}×${t.count}`)
-                .join(", ");
-            for (const wl of wrapLines(joined, W - 6)) {
-                boxRow(`  ${pc.dim(wl)}`, pc.green);
-            }
-        }
+        boxRow(pc.dim("  Most common bytes  ") + parts, pc.green);
     }
     if (hp.xorHints.length > 0) {
         boxRow(" ", pc.green);
@@ -171,21 +179,14 @@ export function renderHexPatternPanel(hp) {
     if (hp.annotatedLines.length > 0) {
         boxRow(" ", pc.green);
         boxRow(pc.bold(pc.white("  Annotated hex (offset · bytes · ASCII)")), pc.green);
-        boxRow(pc.dim(`  Showing first ${HEX_PATTERN_PREVIEW_BYTES} bytes · · = non-printable`), pc.green);
+        boxRow(pc.dim(`  Annotated ${hp.bytesAnnotated} byte(s) (cap via GIANT_HEX_DUMP_BYTES) · · = non-printable`), pc.green);
         for (const L of hp.annotatedLines) {
-            const hexPart = L.hex.length > W - 28 ? L.hex.slice(0, W - 32) + "…" : L.hex;
             const one = pc.dim(L.offset) +
                 "  " +
-                pc.white(hexPart) +
+                pc.white(L.hex) +
                 "  " +
                 pc.cyan(L.ascii);
-            if (stripAnsi(one).length > W - 4) {
-                boxRow(pc.dim(`  ${L.offset}  `) + pc.white(hexPart), pc.green);
-                boxRow(`       ${pc.cyan(L.ascii)}`, pc.green);
-            }
-            else {
-                boxRow(`  ${one}`, pc.green);
-            }
+            boxRow(`  ${one}`, pc.green);
         }
     }
     boxRow(" ", pc.green);
@@ -196,17 +197,109 @@ export function renderHexPatternPanel(hp) {
     else {
         for (const f of hp.finds) {
             boxRow(`  ${pc.yellow("▸")} ${pc.bold(pc.cyan(f.title))}`, pc.green);
-            for (const wl of wrapLines(f.detail, W - 8)) {
+            for (const wl of wrapLines(f.detail, innerW() - 4)) {
                 boxRow(`     ${pc.dim(wl)}`, pc.green);
             }
             if (f.suggest) {
-                for (const wl of wrapLines(f.suggest, W - 8)) {
+                for (const wl of wrapLines(f.suggest, innerW() - 4)) {
                     boxRow(`     ${pc.cyan("→")} ${pc.white(wl)}`, pc.green);
                 }
             }
         }
     }
     boxBottom(pc.green);
+    console.log("");
+}
+/**
+ * Per-family cipher likelihoods, multi-layer unwrap hypotheses, and falsifiable critique.
+ * Fits the same boxed terminal UI as other analyst panels.
+ */
+export function renderCipherIntelligence(report) {
+    const accent = pc.magenta;
+    const st = report.stats;
+    boxTop(accent);
+    boxRow(pc.bold(accent("  CIPHER INTELLIGENCE — PREDICTIONS × LAYERS × CRITIQUE")), accent);
+    boxMid(accent);
+    boxRow(pc.bold(pc.white("  Quick statistics")), accent);
+    boxRow(lr(pc.dim("  Index of coincidence"), st.indexOfCoincidence !== null
+        ? pc.white(st.indexOfCoincidence.toFixed(4)) +
+            pc.dim(`  (English ~${st.englishExpectedIoc}; n=${st.letterCountForIoc} letters)`)
+        : pc.dim("n/a — too few A–Z letters in buffer")), accent);
+    boxRow(lr(pc.dim("  Byte entropy"), pc.white(`${st.byteEntropyBits.toFixed(2)}`) + pc.dim(" bits/byte")), accent);
+    boxRow(lr(pc.dim("  Printable ASCII"), pc.white(`${(st.printableAsciiRatio * 100).toFixed(1)}%`)), accent);
+    const zlibLine = st.zlibInflateLikely
+        ? pc.green("inflate OK") +
+            pc.dim(`  (size ratio ${st.zlibSizeRatio?.toFixed(3) ?? "?"})`)
+        : pc.dim("no zlib/gzip inflate on raw buffer");
+    boxRow(lr(pc.dim("  Compression probe"), zlibLine), accent);
+    if (st.approxPeriodFromStructure) {
+        boxRow(lr(pc.dim("  Structural period hint"), pc.yellow(String(st.approxPeriodFromStructure))), accent);
+    }
+    boxRow(lr(pc.dim("  Best pool candidate"), pc.white(st.bestCandidateMethod ?? "—") +
+        pc.dim("  score ") +
+        pc.white(st.bestCandidateScore !== null ? st.bestCandidateScore.toFixed(2) : "—")), accent);
+    boxRow(" ", accent);
+    boxRow(pc.bold(pc.white("  Cipher-family predictions (heuristic confidence)")), accent);
+    const predBarW = Math.max(14, Math.min(36, innerW() - 44));
+    for (const p of report.predictions) {
+        const filled = Math.round((p.confidence / 100) * predBarW);
+        const bar = pc.green("█".repeat(filled)) +
+            pc.dim("░".repeat(Math.max(0, predBarW - filled)));
+        boxRow(`  ${pc.yellow("▸")} ${pc.bold(pc.cyan(p.label))}`, accent);
+        boxRow("     " +
+            pc.bold(pc.white(String(p.confidence).padStart(3))) +
+            pc.dim("% ") +
+            bar, accent);
+        for (const wl of wrapLines(p.summary, innerW() - 6)) {
+            boxRow(`     ${pc.dim(wl)}`, accent);
+        }
+        for (const ev of p.evidence.slice(0, 4)) {
+            for (const wl of wrapLines(`· ${ev}`, innerW() - 6)) {
+                boxRow(`     ${pc.dim(wl)}`, accent);
+            }
+        }
+        if (p.evidence.length > 4) {
+            boxRow(`     ${pc.dim(`… ${p.evidence.length - 4} more in log`)}`, accent);
+        }
+    }
+    boxRow(" ", accent);
+    boxRow(pc.bold(pc.white("  Multi-layer hypotheses (outer → inner)")), accent);
+    for (const L of report.layerHypotheses) {
+        boxRow(lr(pc.dim(`  #${L.rank}`), pc.yellow(`${L.confidence}%`) + pc.dim("  confidence")), accent);
+        const plainChain = L.chain.join(" → ");
+        for (const wl of wrapLines(`  ${plainChain}`, innerW() - 2)) {
+            boxRow(pc.cyan(wl), accent);
+        }
+        for (const wl of wrapLines(L.notes, innerW() - 4)) {
+            boxRow(`    ${pc.dim(wl)}`, accent);
+        }
+        boxRow(" ", accent);
+    }
+    boxRow(pc.bold(pc.white("  Critical analysis (how to read these results)")), accent);
+    for (const i of report.insights) {
+        boxRow(`  ${pc.yellow("◆")} ${pc.bold(pc.white(i.title))}`, accent);
+        for (const wl of wrapLines(`Obs: ${i.observation}`, innerW() - 4)) {
+            boxRow(`    ${pc.dim(wl)}`, accent);
+        }
+        for (const wl of wrapLines(`→ ${i.interpretation}`, innerW() - 4)) {
+            boxRow(`    ${pc.cyan(wl)}`, accent);
+        }
+        for (const wl of wrapLines(`Falsify: ${i.falsify}`, innerW() - 4)) {
+            boxRow(`    ${pc.red(wl)}`, accent);
+        }
+        boxRow(" ", accent);
+    }
+    if (st.topSolverMethods.length > 0) {
+        boxRow(pc.dim("  Solver method mix (top):"), accent);
+        const row = st.topSolverMethods
+            .slice(0, 6)
+            .map((m) => `${m.method}×${m.count}`)
+            .join(pc.dim(" · "));
+        for (const wl of wrapLines(`  ${row}`, innerW() - 2)) {
+            boxRow(wl, accent);
+        }
+    }
+    boxBottom(accent);
     console.log("");
 }
 /** Legacy --dump-all mode header. */
@@ -236,8 +329,9 @@ export function renderStatsDashboard(o) {
         : o.plausibilityPercent >= 45
             ? pc.yellow
             : pc.red;
+    const plBarW = Math.max(18, Math.min(52, innerW() - 48));
     boxRow("  " +
-        barMeter("Est. plaintext plausibility", o.plausibilityPercent, 28, plColor) +
+        barMeter("Est. plaintext plausibility", o.plausibilityPercent, plBarW, plColor) +
         pc.dim("  (heuristic)"), pc.blue);
     boxRow(pc.dim("      Heuristic 0–100 from ASCII, letters, dictionary hits, χ², quadgrams — not a true probability."), pc.blue);
     boxRow(" ", pc.blue);
@@ -280,19 +374,39 @@ export function renderPhasesPipeline(phases) {
         return `${n}${name}`;
     })
         .join(pc.dim("  →  "));
-    const line = "  " + joined;
-    if (stripAnsi(line).length <= W - 4) {
-        boxRow(line, pc.yellow);
-    }
-    else {
-        for (const p of phases) {
-            boxRow(`  ${pc.dim("•")} ${pc.cyan(p)}`, pc.yellow);
-        }
-    }
+    boxRow("  " + joined, pc.yellow);
     boxBottom(pc.yellow);
     console.log("");
 }
-export function renderWordHits(hits, maxShow = 14) {
+function wrapHardPlain(plain, maxLen) {
+    if (maxLen < 4)
+        return [plain];
+    const lines = [];
+    for (let i = 0; i < plain.length; i += maxLen) {
+        lines.push(plain.slice(i, i + maxLen));
+    }
+    return lines.length ? lines : [""];
+}
+/** Max candidate plaintext chars in the UI (default: unlimited). Set `GIANT_CANDIDATE_TEXT_MAX` to cap. */
+function maxCandidateBodyChars() {
+    const raw = process.env.GIANT_CANDIDATE_TEXT_MAX;
+    if (raw === undefined || raw === "")
+        return Number.POSITIVE_INFINITY;
+    if (raw === "0" || raw.toLowerCase() === "full") {
+        return Number.POSITIVE_INFINITY;
+    }
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 0)
+        return Number.POSITIVE_INFINITY;
+    return n;
+}
+function candidateBodyForDisplay(s) {
+    const max = maxCandidateBodyChars();
+    if (!Number.isFinite(max) || s.length <= max)
+        return s;
+    return plainTruncate(s, max);
+}
+export function renderWordHits(hits, maxShow = Number.POSITIVE_INFINITY) {
     boxTop(pc.green);
     boxRow(pc.bold(pc.green(`  DICTIONARY TOKEN SCAN  (${hits.length} hit${hits.length === 1 ? "" : "s"})`)), pc.green);
     boxMid(pc.green);
@@ -302,18 +416,27 @@ export function renderWordHits(hits, maxShow = 14) {
         console.log("");
         return;
     }
-    const show = hits.slice(0, maxShow);
+    const show = Number.isFinite(maxShow) ? hits.slice(0, maxShow) : hits;
+    const indent = 6;
+    const ctxW = Math.max(8, innerW() - indent);
     for (const h of show) {
         boxRow(`  ${pc.dim(`[${h.start}:${h.end}]`)}  ${pc.bold(pc.green(`“${h.word}”`))}`, pc.green);
-        const ctx = h.contextLine.length > W - 8
-            ? h.contextLine.slice(0, W - 12) + " …"
-            : h.contextLine;
-        boxRow(pc.dim(`      ${ctx}`), pc.green);
-        const caret = " ".repeat(Math.min(W - 14, 6 + h.contextWordStart)) + pc.magenta("^");
-        boxRow(caret, pc.green);
+        const plainCtx = stripAnsi(h.contextLine);
+        const ctxLines = wrapHardPlain(plainCtx, ctxW);
+        const lineIdx = Math.floor(h.contextWordStart / ctxW);
+        const colInLine = h.contextWordStart % ctxW;
+        for (let li = 0; li < ctxLines.length; li++) {
+            boxRow(" ".repeat(indent) + pc.dim(ctxLines[li]), pc.green);
+            if (li === lineIdx) {
+                boxRow(" ".repeat(indent + colInLine) + pc.magenta("^"), pc.green);
+            }
+        }
+        if (ctxLines.length > 0 && lineIdx >= ctxLines.length) {
+            boxRow(" ".repeat(indent + colInLine) + pc.magenta("^"), pc.green);
+        }
     }
     if (hits.length > maxShow) {
-        boxRow(pc.dim(`  … ${hits.length - maxShow} more in log file`), pc.green);
+        boxRow(pc.dim(`  … ${hits.length - maxShow} more (increase limit or see log file)`), pc.green);
     }
     boxBottom(pc.green);
     console.log("");
@@ -348,11 +471,10 @@ export function renderCandidateCard(c, title) {
         boxRow(lr(pc.dim("  ASCII / letters"), pc.white(`${(m.printableRatio * 100).toFixed(0)}% / ${(m.letterRatio * 100).toFixed(0)}%`)), pc.magenta);
     }
     const detail = `${c.method}  │  ${c.detail}`;
-    const d = detail.length > W - 8 ? detail.slice(0, W - 12) + " …" : detail;
-    boxRow(pc.dim(`  ${d}`), pc.magenta);
+    boxRow(pc.dim(`  ${detail}`), pc.magenta);
     boxMid(pc.magenta);
-    const body = plainTruncate(c.text, 960);
-    for (const line of wrapLines(body, W - 6)) {
+    const body = candidateBodyForDisplay(c.text);
+    for (const line of wrapLines(body, innerW() - 2)) {
         boxRow(pc.white("  " + line), pc.magenta);
     }
     boxBottom(pc.magenta);
@@ -371,7 +493,7 @@ export function renderReadabilityCard(r) {
     if (!r.passes && r.reasons.length) {
         boxMid(pc.cyan);
         const reasons = r.reasons.join(", ");
-        const wrapped = wrapLines(`Failures: ${reasons}`, W - 6);
+        const wrapped = wrapLines(`Failures: ${reasons}`, innerW() - 2);
         for (const line of wrapped) {
             boxRow(pc.red("  " + line), pc.cyan);
         }
@@ -380,17 +502,31 @@ export function renderReadabilityCard(r) {
     console.log("");
 }
 function wrapLines(s, maxLen) {
+    if (maxLen < 8)
+        return [s];
     const words = s.split(/\s+/);
     const lines = [];
     let cur = "";
     for (const w of words) {
+        if (!w.length)
+            continue;
+        if (w.length > maxLen) {
+            if (cur) {
+                lines.push(cur);
+                cur = "";
+            }
+            for (let i = 0; i < w.length; i += maxLen) {
+                lines.push(w.slice(i, i + maxLen));
+            }
+            continue;
+        }
         const next = cur ? `${cur} ${w}` : w;
         if (next.length <= maxLen)
             cur = next;
         else {
             if (cur)
                 lines.push(cur);
-            cur = w.length > maxLen ? w.slice(0, maxLen - 1) + "…" : w;
+            cur = w;
         }
     }
     if (cur)

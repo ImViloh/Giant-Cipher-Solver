@@ -174,6 +174,26 @@ function looksLikeBase64UrlOnly(s) {
         return false;
     return true;
 }
+/** RFC 4648 Base32 alphabet (padding with =). */
+function looksLikeBase32Ascii(s) {
+    const t = s.replace(/\s/g, "");
+    if (t.length < 16)
+        return false;
+    if (!/^[A-Z2-7]+=*$/i.test(t))
+        return false;
+    return t.length % 8 === 0;
+}
+/** Bitcoin / Flickr Base58 — no 0,O,I,l; no standard padding. */
+function looksLikeBase58Text(s) {
+    const t = s.replace(/\s/g, "");
+    if (t.length < 24 || t.length > 512)
+        return false;
+    if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(t))
+        return false;
+    if (/[+/=]/.test(t))
+        return false;
+    return true;
+}
 /**
  * After standard base64 decode of the outer ciphertext, classify what the bytes
  * look like (nested encodings, PEM, JWT, magic files) and fingerprint raw bytes.
@@ -227,6 +247,20 @@ export function analyzeDecodedPayload(buf) {
         matches.push({
             kind: "Base64url-style",
             description: "Mostly alphanumeric with - or _ (URL-safe alphabet) — may be base64url without standard +/ padding.",
+            detectedSample: truncateSample(trimmed),
+        });
+    }
+    if (trimmed.length >= 16 && looksLikeBase32Ascii(trimmed) && !looksLikeHexAscii(buf)) {
+        matches.push({
+            kind: "Base32-shaped (ASCII)",
+            description: "String matches Base32 alphabet (A–Z, 2–7) with padding — try Base32 decode before cryptanalysis.",
+            detectedSample: truncateSample(trimmed),
+        });
+    }
+    if (trimmed.length >= 32 && looksLikeBase58Text(trimmed)) {
+        matches.push({
+            kind: "Base58-shaped",
+            description: "Character set matches common Base58 (Bitcoin alphabet) — may be an address or encoded key material.",
             detectedSample: truncateSample(trimmed),
         });
     }

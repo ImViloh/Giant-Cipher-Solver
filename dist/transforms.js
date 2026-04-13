@@ -132,72 +132,113 @@ const DEFAULT_KEYS = [
     "zombies",
     "CallOfDuty",
 ];
+const BUILTIN_XOR_KEYS = [...DEFAULT_KEYS];
 export function builtinXorKeys() {
-    return [...DEFAULT_KEYS];
+    return BUILTIN_XOR_KEYS.slice();
 }
+/** Extra keywords from documented COD Zombies cipher solves (wiki / community). */
+const COD_ZOMBIES_CIPHER_KEYWORDS = [
+    "Classified",
+    "CLASSIFIED",
+    "Pentagon",
+    "TheCastle",
+    "The Castle",
+    "Castle",
+    "shinonuma",
+    "ShiNoNuma",
+    "Testsubjec0074",
+    "Testsubject0074",
+    "Aurora Borealis",
+    "AuroraBorealis",
+    "Division9",
+    "Division 9",
+    "Ascension",
+    "Maxis",
+    "Edward",
+    "Richtofen",
+    "Takeo",
+    "Masaki",
+    "Group935",
+    "Group 935",
+    "Primis",
+    "Ultimis",
+    "Apothicon",
+    "Keeper",
+    "Monty",
+    "Shadowman",
+];
 /**
  * Keywords tied to Treyarch Zombies / Jason Blundell-era cipher hunts (Revelations, The Giant, etc.).
  * Used for classical polyalphabetic probes and block-cipher passphrases (mcrypt-style tooling).
  */
+const BLUNDELL_CIPHER_KEYWORDS = [
+    "ZOMBIES",
+    "Zombies",
+    "zombies",
+    "ZOMBIE",
+    "Zombie",
+    "REVELATIONS",
+    "Revelations",
+    "revelations",
+    "GIANT",
+    "TheGiant",
+    "The Giant",
+    "thegiant",
+    "JasonBlundell",
+    "Blundell",
+    "jasonblundell",
+    "Treyarch",
+    "treyarch",
+    "Primis",
+    "Ultimis",
+    "Richtofen",
+    "Maxis",
+    "Samantha",
+    "Sophia",
+    "Group935",
+    "Group 935",
+    "Element115",
+    "Element 115",
+    "115",
+    "DerRiese",
+    "Der Riese",
+    "DerEisendrache",
+    "Eisendrache",
+    "Origins",
+    "Moon",
+    "Ascension",
+    "Kino",
+    "ShiNoNuma",
+    "MCrypt",
+    "mcrypt",
+    "ShadowsOfEvil",
+    "SOE",
+    "GorodKrovi",
+    "Gorod Krovi",
+    "Apothicon",
+    "Keeper",
+    "Aether",
+    "SummoningKey",
+    "Kronorium",
+    "Verruckt",
+    "NachtDerUntoten",
+    ...COD_ZOMBIES_CIPHER_KEYWORDS,
+];
+export function codZombiesCipherKeywords() {
+    return COD_ZOMBIES_CIPHER_KEYWORDS.slice();
+}
 export function blundellCipherKeywords() {
-    return [
-        "ZOMBIES",
-        "Zombies",
-        "zombies",
-        "ZOMBIE",
-        "Zombie",
-        "REVELATIONS",
-        "Revelations",
-        "revelations",
-        "GIANT",
-        "TheGiant",
-        "The Giant",
-        "thegiant",
-        "JasonBlundell",
-        "Blundell",
-        "jasonblundell",
-        "Treyarch",
-        "treyarch",
-        "Primis",
-        "Ultimis",
-        "Richtofen",
-        "Maxis",
-        "Samantha",
-        "Sophia",
-        "Group935",
-        "Group 935",
-        "Element115",
-        "Element 115",
-        "115",
-        "DerRiese",
-        "Der Riese",
-        "DerEisendrache",
-        "Eisendrache",
-        "Origins",
-        "Moon",
-        "Ascension",
-        "Kino",
-        "ShiNoNuma",
-        "MCrypt",
-        "mcrypt",
-        "ShadowsOfEvil",
-        "SOE",
-        "GorodKrovi",
-        "Gorod Krovi",
-        "Apothicon",
-        "Keeper",
-        "Aether",
-        "SummoningKey",
-        "Kronorium",
-        "Verruckt",
-        "NachtDerUntoten",
-    ];
+    return BLUNDELL_CIPHER_KEYWORDS.slice();
 }
 export function md5Hex(s) {
     return createHash("md5").update(s, "utf8").digest("hex");
 }
+let cachedDerivedKeys;
+let cachedDerivedSha256Keys;
 /** Short keys from hashing common phrases (hex bytes used as XOR key). */
 export function derivedKeys() {
+    if (cachedDerivedKeys)
+        return cachedDerivedKeys.slice();
     const seeds = [
         "TheGiant",
         "DerRiese",
@@ -205,10 +246,13 @@ export function derivedKeys() {
         "Element115",
         "Moon",
     ];
-    return seeds.map((s) => md5Hex(s).slice(0, 16));
+    cachedDerivedKeys = seeds.map((s) => md5Hex(s).slice(0, 16));
+    return cachedDerivedKeys.slice();
 }
 /** SHA256-derived hex keys (16 hex chars = 8 bytes as XOR/RC4 material). */
 export function derivedSha256Keys() {
+    if (cachedDerivedSha256Keys)
+        return cachedDerivedSha256Keys.slice();
     const seeds = [
         "TheGiant",
         "DerRiese",
@@ -231,7 +275,8 @@ export function derivedSha256Keys() {
         "Apothicon",
         "Keeper",
     ];
-    return seeds.map((s) => createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16));
+    cachedDerivedSha256Keys = seeds.map((s) => createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16));
+    return cachedDerivedSha256Keys.slice();
 }
 const EXTRA_STRETCH_KEYS = [
     "TG",
@@ -279,15 +324,18 @@ const EXTRA_STRETCH_KEYS = [
     "Shadows",
     "SOE",
 ];
+let cachedAllStretchXorKeys;
 /**
  * Lore + hash-derived keys for repeating XOR, Vigenère, and layered RC4.
  * Deduplicated; use with `GIANT_EXTRA_KEYS` (env) in the solver.
  */
 export function allStretchXorKeys() {
+    if (cachedAllStretchXorKeys)
+        return cachedAllStretchXorKeys.slice();
     const seen = new Set();
     const out = [];
     for (const k of [
-        ...builtinXorKeys(),
+        ...BUILTIN_XOR_KEYS,
         ...derivedKeys(),
         ...derivedSha256Keys(),
         ...EXTRA_STRETCH_KEYS,
@@ -297,5 +345,6 @@ export function allStretchXorKeys() {
             out.push(k);
         }
     }
-    return out;
+    cachedAllStretchXorKeys = out;
+    return out.slice();
 }
