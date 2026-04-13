@@ -14,13 +14,17 @@ then builds a large pool of candidate plaintexts:
      and layered transforms (nested Base64, zlib, hex-as-ASCII, nibble swap,
      repeating XOR, RC4, optional full single-byte XOR on layer buffers).
 
-  2) Extended probes — classical ciphers on the Latin-1 view of the payload
+  2) Extended probes — classical ciphers on text views of the payload
      (Beaufort/Vigenère on A–Z and on A–Za–z, Atbash, Caesar shifts, ROT13,
-     rail-fence), cumulative-XOR unroll on bytes, and OpenSSL block decrypt
-     attempts (AES, 3DES, RC2/Blowfish when your Node/OpenSSL exposes them)
+     rail-fence), cumulative-XOR unroll on bytes, OpenSSL block decrypt
+     attempts (AES, 3DES, RC2/Blowfish when your Node/OpenSSL exposes them),
      including decrypting after reversing ciphertext bytes.
 
-  3) Automatic brute force (time-limited by default) — after heuristics,
+  3) COD-era classical (optional) — Affine A26 sweep, Playfair, Bifid,
+     columnar transposition, keyed Caesar, custom-alphabet (ZNS) Vigenère.
+     Controlled by GIANT_COD_* environment variables (see below and npm run help).
+
+  4) Automatic brute force (time-limited by default) — after heuristics,
      repeating XOR with keys from [a-zA-Z0-9] up to a max length, then
      Vigenère plus Beaufort on the Base64 ciphertext with the same alphabet,
      until readable English is found or the wall clock budget expires.
@@ -31,6 +35,9 @@ hits, chi-squared, quadgrams) and applies a strict readability gate for a
 
 Important: this program searches and ranks candidates. It does not guarantee
 that any real-world ciphertext will decode to readable English.
+
+This repository is a Node.js CLI only (no desktop shell). The entry point after
+build is dist/index.js.
 
 
 PREREQUISITES
@@ -84,10 +91,9 @@ Run from the project directory. Scripts use cross-env for Windows/macOS/Linux.
 
   npm run solve   (same as npm start)
       Default “wide search” preset: large extended-keyword list, deep nested
-      Base64 (12), large layer buffer cap, full layer XOR/RC4 key lists (see
-      package.json for exact GIANT_* numbers). Brute key lengths default to
-      XOR 4 / Vigenère+Beaufort 3 and 10-minute wall time unless you override
-      environment variables.
+      Base64 (see package.json), large layer buffer cap, full layer XOR/RC4 key
+      lists. Brute key lengths default to XOR 4 / Vigenère+Beaufort 3 and
+      10-minute wall time unless you override environment variables.
 
   npm run solve:quick
       Fast loop: brute 2/2, 3-minute budget, smaller extended + layer caps.
@@ -108,13 +114,16 @@ Run from the project directory. Scripts use cross-env for Windows/macOS/Linux.
 
   npm run dump
       npm run build, then --dump-all: list scored heuristic candidates without
-      the automatic brute loop.
+      the automatic brute loop. Also prints the cipher-suite catalog boxes.
 
   npm run help
       Builds and prints CLI flags and environment variable names.
 
+  npm run cli
+      node dist/index.js — use after build; does not rebuild automatically.
+
 Worker threads for brute force default to your CPU logical core count. Set
-GIANT_THREADS (e.g. 24) if you want to cap or raise parallelism.
+GIANT_THREADS (e.g. 24 or 1) if you want to cap or change parallelism.
 
 
 COMMAND-LINE OPTIONS
@@ -139,6 +148,11 @@ Brute phases:
   GIANT_THREADS           Worker threads (default: CPU count)
   GIANT_EXTRA_KEYS        Extra keys for heuristics (comma or semicolon)
 
+Display (terminal boxes and panels):
+  GIANT_UI_WIDTH              Box width in columns (default 160)
+  GIANT_HEX_DUMP_BYTES        Hex panel size (default 8192)
+  GIANT_CANDIDATE_TEXT_MAX    Optional cap on plaintext shown in cards
+
 Extended probes (disable to speed up):
   GIANT_EXTENDED_PROBES       0 = skip classical + block + cumulative-XOR bundle
   GIANT_CLASSICAL_PROBES      0 = skip classical letter ciphers
@@ -147,6 +161,12 @@ Extended probes (disable to speed up):
   GIANT_CLASSICAL_KEYS        Cap for classical keys only
   GIANT_BLOCK_CIPHER_KEYS     Cap for block-cipher passphrases
   GIANT_BLOCK_CIPHER_MAX      Max successful block decrypts per direction
+
+COD-era classical:
+  GIANT_COD_CLASSICAL_PROBES  0 = skip Affine, Playfair, Bifid, columnar, etc.
+  GIANT_COD_CLASSICAL_KEYS    Keyword cap for COD classical methods
+  GIANT_COD_AFFINE            0 = skip Affine (a,b) sweep
+  GIANT_COD_KEYED_CAESAR_MAX_SHIFT  Max shift 1..N for keyed Caesar
 
 Layered search:
   GIANT_NESTED_B64, GIANT_LAYER_MAX_BUFS, GIANT_LAYER_XORREP, GIANT_LAYER_RC4,
@@ -161,17 +181,47 @@ WHAT YOU WILL SEE (typical run)
   • Yellow “cryptanalysis running” banner with keyspace notes and time budget.
   • On an interactive terminal (TTY): live brute panel — pipeline progress,
     keys tried/left, phase budget countdown, ETA (during XOR/Vigenère brute).
+  • Boxed cipher suite catalog (transport, XOR/stream, classical, COD-era,
+    block, scoring — defined in src/codCipherSuite.ts).
   • After completion: hero, input strip, outer Base64 payload analysis (entropy,
     hex preview, file signatures, nested-format hints), hex pattern scan
-    (annotated dump, XOR printable hints, structural notes), analytics
-    dashboard, execution pipeline, dictionary token scan, path to word log,
-    best candidate / readability cards.
+    (annotated dump, XOR printable hints, structural notes), cipher
+    intelligence panel, analytics dashboard, execution pipeline, dictionary
+    token scan, path to word log, best candidate / readability cards.
 
-  The payload and hex panels depend only on the decoded bytes of "cipher";
-  they do not change run-to-run unless the ciphertext changes.
+  The payload, hex, and intelligence panels depend on the decoded bytes of
+  "cipher"; they do not change run-to-run unless the ciphertext changes.
 
   giant-word-hits.log — session metadata, ciphertext sections, dictionary
-  token positions, and appended payload / hex analysis text.
+  token positions, and appended payload / intelligence text.
+
+
+CODE LAYOUT (src/)
+-------------------
+  index.ts              CLI: argv, --help, full session (auto-solve or --dump-all)
+  solver.ts             JSON load, heuristic candidates, scoring glue
+  autoSolve.ts          Heuristics then brute XOR/Vigenère, readability gate
+  bruteforce.ts         Workers, ranges, phase timing
+  workers/              xorRangeWorker.ts, vigRangeWorker.ts
+  extendedProbes.ts     Classical, block, COD classical, cumulative XOR
+  classicalCiphers.ts
+  codClassicalCiphers.ts
+  codCipherSuite.ts     Catalog text for boxed “cipher suite” UI
+  blockCipherProbes.ts
+  layerSearch.ts        Nested B64, zlib, XOR, RC4; GIANT_LAYER_* caps
+  layerTransforms.ts
+  consoleUi.ts          Terminal dashboards, cards, sections
+  solveProgress.ts      Banners, live brute UI, SIGINT/SIGTERM progress
+  cipherIntelligence.ts
+  payloadAnalysis.ts
+  hexPatterns.ts
+  wordScan.ts           Dictionary hits + giant-word-hits.log writer
+  englishReadability.ts
+  scoring.ts, stats.ts
+  transforms.ts, keyspace.ts
+  bruteState.ts, uiWidth.ts
+
+  dist/                 Output of npm run build (listed in .gitignore)
 
 
 TIPS
@@ -180,14 +230,9 @@ TIPS
   • Brute wall time applies only to XOR + Vigenère/Beaufort phases, not to the
     entire process from process start.
   • GIANT_EXTRA_KEYS adds community or map-specific guesses without code edits.
+  • Turn off GIANT_COD_CLASSICAL_PROBES or GIANT_EXTENDED_PROBES when testing
+    performance.
   • For GitHub-style documentation, see README.md in the repo root.
-
-
-CODE LAYOUT
------------
-  src/          TypeScript sources
-  dist/         Compiled output after npm run build
-  Entry point:  dist/index.js
 
 
 ================================================================================
